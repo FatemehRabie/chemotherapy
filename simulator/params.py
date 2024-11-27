@@ -1,0 +1,11 @@
+PDE_number_of_steps = 10
+PDE_step_length = 1.0/PDE_number_of_steps
+PDE_number_of_substeps = 3
+s_disc = 10
+episode_time = 400
+noise_scale = 0.1
+k1 = 0.8
+k2 = 0.2
+xi = 1.0
+l1 = 0.8
+l2 = 0.2

@@ -1,0 +1,2 @@
+Mean reward of A2C: -6.21 +/- 1.70
+Total A2C runtime: 219312.47 seconds

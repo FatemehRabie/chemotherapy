@@ -1,0 +1,2 @@
+Mean reward of TRPO: -5.31 +/- 0.99
+Total TRPO runtime: 178977.05 seconds
