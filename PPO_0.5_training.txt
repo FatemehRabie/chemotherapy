@@ -1,0 +1,2 @@
+Mean reward of the last model trained by PPO (beta = 0.5): -284.10 +/- 8.49
+Mean reward of the best model trained by PPO (beta = 0.5): -211.51 +/- 57.73Total PPO (beta = 0.5) runtime: 41156.82 seconds
