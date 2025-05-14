@@ -24,15 +24,25 @@ import pandas as pd
 file_path = './GDSC2_fitted_dose_response_27Oct23.xlsx'
 df = pd.read_excel(file_path)
 
-# Process data
+# Extract only the relevant columns
 df_subset = df[['CELL_LINE_NAME', 'DRUG_NAME', 'AUC']]
+
+# Create a pivot table to check if each CELL_LINE_NAME has the same set of DRUG_NAME values
 pivot_table = df_subset.pivot_table(index='CELL_LINE_NAME', columns='DRUG_NAME', values='AUC', aggfunc='size')
-valid_cell_lines = pivot_table[pivot_table.notna().all(axis=1)].index
+
+# Filter out rows with NaN values, ensuring all CELL_LINE_NAME have the same set of DRUG_NAME values
+complete_rows_mask = pivot_table.notna().all(axis=1)
+valid_cell_lines = pivot_table[complete_rows_mask].index
+
+# Filter the original subset dataframe based on valid_cell_lines
 filtered_df = df_subset[df_subset['CELL_LINE_NAME'].isin(valid_cell_lines)]
+
+# Group by the first two columns and average the third column if duplicates are found
 df_no_duplicates = filtered_df.groupby(['CELL_LINE_NAME', 'DRUG_NAME'], as_index=False).agg({'AUC': 'mean'})
 
-# Save processed data
-df_no_duplicates.to_excel('./Filtered_GDSC2_No_Duplicates_Averaged.xlsx', index=False)
+# Save the updated DataFrame without duplicates to a new Excel file
+output_file_path_no_duplicates = './Filtered_GDSC2_No_Duplicates_Averaged.xlsx'
+df_no_duplicates.to_excel(output_file_path_no_duplicates, index=False)
 ```
 
 The processed data will be saved as `Filtered_GDSC2_No_Duplicates_Averaged.xlsx`.
@@ -43,34 +53,14 @@ Train PPO, TRPO, and A2C models using the provided evaluation script:
 ```python
 from utils.evaluation import evaluate
 
-evaluate(['PPO', 'TRPO', 'A2C'], total_steps=100_000, num_steps=32, number_of_envs=4, number_of_eval_episodes=10, seed=19)
+for param in [0.01, 0.1, 0.5]:
+    evaluate(['PPO','TRPO','A2C'], total_steps=40000, num_steps=32, beta=param, number_of_envs=4, number_of_eval_episodes=10, seed=19)
 ```
-
-#### 3. Plot Results
-
-Generate training performance plots with the following script:
-```python
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-
-sns.set_theme()
-plt.figure(figsize=(12, 8))
-
-for algo in ['PPO', 'TRPO', 'A2C']:
-    log_data = np.load(f'./logs_{algo}/evaluations.npz')
-    ep_rewards = log_data['results']
-    ep_rew_mean = ep_rewards.mean(axis=1)
-    ep_rew_std = ep_rewards.std(axis=1)
-    plt.plot(log_data['timesteps'], ep_rew_mean, label=algo)
-plt.legend()
-plt.savefig('mean_rewards_with_std.png')
-```
-
-This will create a plot `mean_rewards_with_std.png` showing training performance across algorithms.
 
 ### Outputs
 
 - **Processed Data**: Saved as `Filtered_GDSC2_No_Duplicates_Averaged.xlsx`.
-- **Trained RL Models**: Evaluated with performance metrics.
-- **Visualization**: Training performance plots saved as `mean_rewards_with_std.png`.
+- **Trained RL Models**: Evaluated with performance metrics, for example the files in the folder `logs_PPO_0.01`.
+- **Visualization**: Training performance plots, for example `rewards_beta_0.01.png`.
+- **Sample test runs**: Saved in the folder `results`.
+- **Summary of training metrics**: Such as wall-clock times, final and best-checkpoint performance, for example `A2C_0.01_training.txt`. 
