@@ -26,7 +26,7 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
         # Record the end time
         end_time = time.time()
         # Calculate the total runtime
-        total_runtime = end_time - start_time
+        total_runtime = (end_time - start_time)/3600
         # Specify the file to save the runtime and performance
         file_path = f'{algo}_{beta}_training.txt'
         # Evaluate the trained agent
@@ -54,8 +54,8 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
         # Write the total runtime in seconds and the evaluation results to the file
         with open(file_path, 'w') as file:
             file.write(f"Mean reward of the last model trained by {algo} (beta = {beta}): {mean_reward_last:.2f} +/- {std_reward_last:.2f}\n")
-            file.write(f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}")
-            file.write(f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} seconds")
+            file.write(f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}\n")
+            file.write(f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} hours")
         # Plot the results
         for cancer in range(4):
             obs, info = eval_env.reset(seed = 19, options = {'cell_line': cancer, 'diffusion': [0.001, 0.001, 0.001]})  # Reset the environment to start a new episode

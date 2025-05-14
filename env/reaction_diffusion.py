@@ -79,14 +79,14 @@ class ReactionDiffusionEnv(gym.Env):
             d_array = np.random.uniform(low=0.0, high=0.001, size=(3,))
         self.cell_line = self.cancer_cell_lines[random_cell_line]
         # Update the Ansarizadeh model parameters
-        self.ansarizadeh.update({'dtu': d_array[0], 'di': d_array[1], 'du': d_array[2]}) 
-        n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.vec_length(np.random.randn() * x)**2), 
+        self.ansarizadeh.update({'dtu': d_array[0], 'di': d_array[1], 'du': d_array[2]})
+        n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.mean(x)**2) + np.random.exponential(scale=noise_scale), 
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        tu0 = CenteredGrid(lambda x: 1 - 0.75 * math.cosh(math.vec_length(np.random.randn() * x))**-1, 
+        tu0 = CenteredGrid(lambda x: 1 - 0.75 * math.cosh(math.mean(x))**-1 + np.random.exponential(scale=noise_scale), 
                            boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        i0 = CenteredGrid(lambda x: 0.375 - 0.235 * math.cosh(math.vec_length(np.random.randn() * x))**-2, 
+        i0 = CenteredGrid(lambda x: 0.375 - 0.235 * math.cosh(math.mean(x))**-2 + np.random.exponential(scale=noise_scale), 
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        u0 = CenteredGrid(lambda x: math.cosh(math.vec_length(np.random.randn() * x))**-1, 
+        u0 = CenteredGrid(lambda x: math.cosh(math.mean(x))**-1 + np.random.exponential(scale=noise_scale), 
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)  # Initial drug concentration
         # Reset the environment's state variables
         self.n = n0

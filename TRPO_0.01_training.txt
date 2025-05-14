@@ -1,2 +1,3 @@
-Mean reward of the last model trained by TRPO (beta = 0.01): -248.11 +/- 13.82
-Mean reward of the best model trained by TRPO (beta = 0.01): -213.58 +/- 27.15Total TRPO (beta = 0.01) runtime: 37479.51 seconds
+Mean reward of the last model trained by TRPO (beta = 0.01): -5.00 +/- 0.73
+Mean reward of the best model trained by TRPO (beta = 0.01): -5.16 +/- 1.43
+Total TRPO (beta = 0.01) runtime: 26.16 hours

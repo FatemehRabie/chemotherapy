@@ -26,7 +26,7 @@ def process_and_evaluate(file_path):
     df_no_duplicates.to_excel(output_file_path_no_duplicates, index=False)
 
     for param in [0.01, 0.1, 0.5]:
-        evaluate(['PPO','TRPO','A2C'], total_steps=30000, num_steps=32, beta=param, number_of_envs=4, number_of_eval_episodes=10, seed=19)
+        evaluate(['PPO','TRPO','A2C'], total_steps=40000, num_steps=32, beta=param, number_of_envs=4, number_of_eval_episodes=10, seed=19)
 
 if __name__ == "__main__":
     file_path = './GDSC2_fitted_dose_response_27Oct23.xlsx'
