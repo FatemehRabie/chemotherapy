@@ -2,13 +2,18 @@
 
 This repository provides tools for processing chemotherapy-related data, training reinforcement learning (RL) models, and evaluating their performance in simulation environments.
 
+* a 3-dimensional reaction-diffusion tumour simulator wrapped as an OpenAI Gymnasium environment;
+* training utilities for three deep-RL algorithms (PPO, TRPO, A2C) implemented with **Stable-Baselines3** / **sb3-contrib**;
+* processed GDSC2 dose–response data;
+* experiment logs, model checkpoints and evaluation notebooks that reproduce all tables and figures in the paper.
+
 ## Quick Start
 
 ### Prerequisites
 
 1. Install required Python dependencies:
    ```bash
-   pip install pandas numpy seaborn matplotlib stable-baselines3
+   pip install stable-baselines3 sb3-contrib gymnasium phi-flow torch pandas numpy matplotlib seaborn
    ```
 2. Download the GDSC2 dataset (`GDSC2_fitted_dose_response_27Oct23.xlsx`) from [CancerRxGene](https://www.cancerrxgene.org/) and place it in the root directory of the repository.
 
