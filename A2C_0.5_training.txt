@@ -1,3 +1,0 @@
-Mean reward of the last model trained by A2C (beta = 0.5): -180.85 +/- 0.43
-Mean reward of the best model trained by A2C (beta = 0.5): -180.91 +/- 0.66
-Total A2C (beta = 0.5) runtime: 34.89 hours

@@ -32,7 +32,7 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
         # Evaluate the trained agent
         mean_reward_last, std_reward_last = evaluate_policy(model, model.get_env(), n_eval_episodes=number_of_eval_episodes)
         # Load the best model saved by EvalCallback
-        best_model_path = f'./logs_{algo}_{beta}/best_model.zip'
+        best_model_path = f'./logs_{algo}_{beta}/best_model'
         if algo == 'PPO':
             model = PPO.load(best_model_path)
         elif algo == 'TRPO':
