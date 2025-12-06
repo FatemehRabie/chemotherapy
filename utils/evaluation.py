@@ -1,4 +1,5 @@
 import os
+import random
 import time
 from itertools import product
 
@@ -190,6 +191,148 @@ def _make_eval_env(env_kwargs):
     return Monitor(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs))
 
 
+def _prepare_search_candidates(search_config, base_num_steps, max_trials, rng):
+    base_num_steps = base_num_steps or 32
+    learning_rates = search_config.get("learning_rates") or [3e-4, 1e-4]
+    n_steps_options = search_config.get("n_steps") or [base_num_steps, max(base_num_steps // 2, 8)]
+    entropy_or_kl = search_config.get("entropy_or_kl") or [0.001, 0.01]
+    gamma_options = search_config.get("gamma") or [0.95, 0.99]
+
+    mode = search_config.get("mode", "grid")
+    if mode not in {"grid", "random"}:
+        raise ValueError("Search mode must be 'grid' or 'random'")
+
+    if mode == "random":
+        candidates = []
+        for _ in range(max_trials):
+            candidates.append(
+                {
+                    "learning_rate": rng.choice(learning_rates),
+                    "n_steps": int(rng.choice(n_steps_options)),
+                    "entropy_or_kl": rng.choice(entropy_or_kl),
+                    "gamma": rng.choice(gamma_options),
+                }
+            )
+        return candidates
+
+    combos = list(product(learning_rates, n_steps_options, entropy_or_kl, gamma_options))
+    rng.shuffle(combos)
+    combos = combos[:max_trials]
+    return [
+        {
+            "learning_rate": lr,
+            "n_steps": int(steps),
+            "entropy_or_kl": entropy,
+            "gamma": gm,
+        }
+        for lr, steps, entropy, gm in combos
+    ]
+
+
+def run_hyperparameter_search(
+    algos,
+    base_config,
+    beta,
+    experiment_label,
+    env_kwargs=None,
+    search_config=None,
+):
+    search_config = search_config or {}
+    if not search_config.get("enabled"):
+        return {}
+
+    safe_label = experiment_label.replace(" ", "_") if experiment_label else ""
+    label_suffix = f"_{safe_label}" if safe_label else ""
+    results_dir = _ensure_results_dir(os.path.join("results", safe_label) if safe_label else "results")
+
+    seed = search_config.get("seed", base_config.get("seed", 19))
+    rng = random.Random(seed)
+    max_trials = max(1, int(search_config.get("max_trials", 5)))
+    max_seconds = float(search_config.get("max_seconds", 900))
+    start_time = time.time()
+
+    base_num_steps = base_config.get("num_steps")
+    candidates = _prepare_search_candidates(search_config, base_num_steps, max_trials, rng)
+
+    eval_episodes = search_config.get("eval_episodes", base_config.get("eval_episodes", DEFAULT_EVAL_EPISODES))
+    overrides_by_algo = {}
+
+    for algo in algos:
+        if is_baseline(algo):
+            continue
+
+        best_result = None
+        timed_out = False
+        for idx, candidate in enumerate(candidates, start=1):
+            elapsed = time.time() - start_time
+            if elapsed > max_seconds:
+                timed_out = True
+                break
+
+            trial_seed = seed + idx
+            log_folder = f"./logs_{algo}_{beta}_search{label_suffix}_trial{idx}"
+            overrides = {
+                "learning_rate": candidate["learning_rate"],
+                "n_steps": candidate["n_steps"],
+                "gamma": candidate["gamma"],
+                "seed": trial_seed,
+                "log_folder_base": log_folder,
+            }
+            if algo == "TRPO":
+                overrides["target_kl"] = candidate["entropy_or_kl"]
+            else:
+                overrides["entropy_coef"] = candidate["entropy_or_kl"]
+
+            env, model = train(
+                algo,
+                base_config.get("total_steps"),
+                overrides["n_steps"],
+                beta,
+                base_config.get("number_of_envs"),
+                overrides["seed"],
+                env_kwargs=env_kwargs,
+                log_folder_base=log_folder,
+                learning_rate=overrides.get("learning_rate"),
+                gamma=overrides.get("gamma"),
+                entropy_coef=overrides.get("entropy_coef"),
+                target_kl=overrides.get("target_kl"),
+            )
+            eval_env = _make_eval_env(env_kwargs or {})
+            mean_reward, std_reward = _evaluate_model(model, eval_env, eval_episodes)
+
+            if not best_result or mean_reward > best_result["mean_reward"]:
+                best_result = {
+                    "mean_reward": mean_reward,
+                    "std_reward": std_reward,
+                    "config": overrides,
+                }
+
+        if best_result:
+            final_log_folder = f"./logs_{algo}_{beta}{label_suffix}_best"
+            overrides_to_use = {**best_result["config"], "log_folder_base": final_log_folder}
+            overrides_by_algo[algo] = overrides_to_use
+            file_path = os.path.join(results_dir, f"{algo}_{beta}_hyperparam_search{label_suffix}.txt")
+            _write_results(
+                file_path,
+                [
+                    f"Experiment label: {experiment_label or 'baseline'}",
+                    f"Search mode: {search_config.get('mode', 'grid')} (max trials: {max_trials}, max seconds: {max_seconds})",
+                    f"Evaluation episodes: {eval_episodes}",
+                    "Best configuration:",
+                    f"  learning_rate: {best_result['config'].get('learning_rate')}",
+                    f"  n_steps: {best_result['config'].get('n_steps')}",
+                    f"  gamma: {best_result['config'].get('gamma')}",
+                    f"  entropy_coef: {best_result['config'].get('entropy_coef')}",
+                    f"  target_kl: {best_result['config'].get('target_kl')}",
+                    f"  seed: {best_result['config'].get('seed')}",
+                    f"Mean reward: {best_result['mean_reward']:.2f} +/- {best_result['std_reward']:.2f}",
+                    f"Timed out: {timed_out}",
+                ],
+            )
+
+    return overrides_by_algo
+
+
 def evaluate(
     algos,
     total_steps,
@@ -201,9 +344,11 @@ def evaluate(
     out_of_sample=None,
     env_kwargs=None,
     experiment_label=None,
+    training_overrides_by_algo=None,
 ):
     env_kwargs = env_kwargs or {}
     number_of_eval_episodes = number_of_eval_episodes or DEFAULT_EVAL_EPISODES
+    training_overrides_by_algo = training_overrides_by_algo or {}
     sns.set_theme()
     fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -272,16 +417,23 @@ def evaluate(
 
             continue
 
-        log_folder_base = f"./logs_{algo}_{beta}{label_suffix}"
+        overrides = training_overrides_by_algo.get(algo, {})
+        log_folder_base = overrides.get("log_folder_base") or f"./logs_{algo}_{beta}{label_suffix}"
+        train_num_steps = overrides.get("n_steps", num_steps)
+        train_seed = overrides.get("seed", seed)
         env, model = train(
             algo,
             total_steps,
-            num_steps,
+            train_num_steps,
             beta,
             number_of_envs,
-            seed,
+            train_seed,
             env_kwargs=env_kwargs,
             log_folder_base=log_folder_base,
+            learning_rate=overrides.get("learning_rate"),
+            gamma=overrides.get("gamma"),
+            entropy_coef=overrides.get("entropy_coef"),
+            target_kl=overrides.get("target_kl"),
         )
         end_time = time.time()
         total_runtime = (end_time - start_time) / 3600
@@ -305,6 +457,7 @@ def evaluate(
             [
                 f"Experiment label: {experiment_label or 'baseline'}",
                 f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
+                f"Training hyperparameters: {overrides if overrides else 'default'}",
                 f"Mean reward of the last model trained by {algo} (beta = {beta}): {mean_reward_last:.2f} +/- {std_reward_last:.2f}",
                 f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}",
                 f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} hours",
