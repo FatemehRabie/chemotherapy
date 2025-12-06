@@ -21,12 +21,13 @@ DEFAULT_EVAL_EPISODES = 50
 
 
 class OutOfSampleEnvWrapper(gym.Wrapper):
-    """Force evaluation episodes to use held-out cell lines or diffusion settings."""
+    """Force evaluation episodes to use held-out cell lines, drugs, or diffusion settings."""
 
-    def __init__(self, env, cell_lines=None, diffusions=None):
+    def __init__(self, env, cell_lines=None, diffusions=None, drugs=None):
         super().__init__(env)
         self.cell_line_indices = self._prepare_cell_lines(cell_lines)
         self.diffusion_settings = self._prepare_diffusions(diffusions)
+        self.drug_indices = self._prepare_drugs(drugs)
         self.combinations = self._build_combinations()
         self._combo_cursor = 0
 
@@ -57,23 +58,41 @@ class OutOfSampleEnvWrapper(gym.Wrapper):
             prepared.append([float(val) for val in setting])
         return prepared
 
+    def _prepare_drugs(self, drugs):
+        if drugs is None:
+            return []
+        if not hasattr(self.env, "drug_names"):
+            raise AttributeError("Underlying environment must expose `drug_names` for drug selection")
+        lookup = {name: idx for idx, name in enumerate(self.env.drug_names)}
+        indices = []
+        for value in drugs:
+            if isinstance(value, str):
+                if value not in lookup:
+                    raise ValueError(f"Unknown drug '{value}' requested for out-of-sample evaluation")
+                indices.append(lookup[value])
+            else:
+                indices.append(int(value))
+        return indices
+
     def _build_combinations(self):
         cell_lines = self.cell_line_indices or [None]
         diffusions = self.diffusion_settings or [None]
-        return list(product(cell_lines, diffusions))
+        drugs = self.drug_indices or [None]
+        return list(product(cell_lines, diffusions, drugs))
 
     def reset(self, *, seed=None, options=None):
         options = options or {}
         cell_line_idx = options.get("cell_line")
         diffusion = options.get("diffusion")
-        if cell_line_idx is None or diffusion is None:
-            cell_line_idx, diffusion = self._combinations_next(cell_line_idx, diffusion)
-        return self.env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion})
+        drug = options.get("drug")
+        if cell_line_idx is None or diffusion is None or drug is None:
+            cell_line_idx, diffusion, drug = self._combinations_next(cell_line_idx, diffusion, drug)
+        return self.env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion, "drug": drug})
 
-    def _combinations_next(self, cell_line_idx, diffusion):
-        combo_cell_line, combo_diffusion = self.combinations[self._combo_cursor]
+    def _combinations_next(self, cell_line_idx, diffusion, drug):
+        combo_cell_line, combo_diffusion, combo_drug = self.combinations[self._combo_cursor]
         self._combo_cursor = (self._combo_cursor + 1) % len(self.combinations)
-        return cell_line_idx or combo_cell_line, diffusion or combo_diffusion
+        return cell_line_idx or combo_cell_line, diffusion or combo_diffusion, drug or combo_drug
 
 
 def _ensure_results_dir(path="./results"):
@@ -81,8 +100,8 @@ def _ensure_results_dir(path="./results"):
     return path
 
 
-def _run_episode(model, eval_env, cell_line_idx, diffusion=None, seed=19):
-    obs, info = eval_env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion})
+def _run_episode(model, eval_env, cell_line_idx, diffusion=None, drug=None, seed=19):
+    obs, info = eval_env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion, "drug": drug})
     cell_line = info.get("cell_line", cell_line_idx)
     dose, drug_type, drug, states, episodic_rewards = [], [], [], [], []
     done = False
@@ -90,7 +109,8 @@ def _run_episode(model, eval_env, cell_line_idx, diffusion=None, seed=19):
         action, _ = model.predict(obs, deterministic=True)
         obs, reward, done, _, info = eval_env.step(action)
         dose.append(action[0:2])
-        drug_type.append(action[2])
+        applied_drug = getattr(eval_env.unwrapped, "drug_idx", None)
+        drug_type.append(applied_drug if applied_drug is not None else action[2])
         for _ in range(action[0] + 1):
             drug.append(0.1 * action[1])
         for counter in range(len(info) - 1):
@@ -359,6 +379,13 @@ def evaluate(
 
     reward_curves = []
     baseline_rewards = []
+    aggregate_metrics = []
+
+    out_of_sample = out_of_sample or {}
+    oos_cell_lines = out_of_sample.get("cell_lines")
+    oos_diffusions = out_of_sample.get("diffusions")
+    oos_drugs = out_of_sample.get("drugs")
+    oos_context = f"cell_lines={oos_cell_lines if oos_cell_lines else 'random'}, diffusions={oos_diffusions if oos_diffusions else 'random'}, drugs={oos_drugs if oos_drugs else 'random'}"
 
     for algo in algos:
         start_time = time.time()
@@ -380,6 +407,18 @@ def evaluate(
                 ],
             )
 
+            aggregate_metrics.append(
+                {
+                    "algo": algo,
+                    "beta": beta,
+                    "split": "in_sample",
+                    "mean_reward": mean_reward,
+                    "std_reward": std_reward,
+                    "experiment": experiment_label or "baseline",
+                    "context": "standard",
+                }
+            )
+
             for cancer in range(min(4, len(eval_env.env.cancer_cell_lines))):
                 cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                     model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
@@ -389,9 +428,9 @@ def evaluate(
             baseline_rewards.append((algo, mean_reward, std_reward))
 
             if out_of_sample:
-                oos_cell_lines = out_of_sample.get("cell_lines")
-                oos_diffusions = out_of_sample.get("diffusions")
-                wrapped_env = OutOfSampleEnvWrapper(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions)
+                wrapped_env = OutOfSampleEnvWrapper(
+                    gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+                )
                 oos_eval_env = Monitor(wrapped_env)
                 oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
                 oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
@@ -404,15 +443,33 @@ def evaluate(
                         f"Evaluation episodes: {number_of_eval_episodes}",
                         f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
                         f"Diffusion settings: {oos_diffusions if oos_diffusions else 'random'}",
+                        f"Drugs: {oos_drugs if oos_drugs else 'random'}",
                     ],
                 )
 
-                for cell_line_idx, diffusion in wrapped_env.combinations:
+                aggregate_metrics.append(
+                    {
+                        "algo": algo,
+                        "beta": beta,
+                        "split": "out_of_sample",
+                        "mean_reward": oos_mean,
+                        "std_reward": oos_std,
+                        "experiment": experiment_label or "baseline",
+                        "context": oos_context,
+                    }
+                )
+
+                for cell_line_idx, diffusion, drug_idx in wrapped_env.combinations:
                     label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
                     cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
-                        model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, seed=seed
+                        model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
                     )
-                    suffix = f"_oos_{str(diffusion).replace(' ', '')}"
+                    drug_label = (
+                        wrapped_env.env.drug_names[drug_idx]
+                        if drug_idx is not None and hasattr(wrapped_env.env, "drug_names")
+                        else str(drug_idx)
+                    )
+                    suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
                     _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
 
             continue
@@ -452,6 +509,18 @@ def evaluate(
         eval_env = _make_eval_env(env_kwargs)
         mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
 
+        aggregate_metrics.append(
+            {
+                "algo": algo,
+                "beta": beta,
+                "split": "in_sample",
+                "mean_reward": mean_reward_best,
+                "std_reward": std_reward_best,
+                "experiment": experiment_label or "baseline",
+                "context": "standard",
+            }
+        )
+
         _write_results(
             file_path,
             [
@@ -483,9 +552,9 @@ def evaluate(
         reward_curves.append((log_data["timesteps"], smoothed_rewards.to_numpy(), smoothed_std.to_numpy(), algo))
 
         if out_of_sample:
-            oos_cell_lines = out_of_sample.get("cell_lines")
-            oos_diffusions = out_of_sample.get("diffusions")
-            wrapped_env = OutOfSampleEnvWrapper(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions)
+            wrapped_env = OutOfSampleEnvWrapper(
+                gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+            )
             oos_eval_env = Monitor(wrapped_env)
             oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
             oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
@@ -498,15 +567,33 @@ def evaluate(
                     f"Evaluation episodes: {number_of_eval_episodes}",
                     f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
                     f"Diffusion settings: {oos_diffusions if oos_diffusions else 'random'}",
+                    f"Drugs: {oos_drugs if oos_drugs else 'random'}",
                 ],
             )
 
-            for cell_line_idx, diffusion in wrapped_env.combinations:
+            aggregate_metrics.append(
+                {
+                    "algo": algo,
+                    "beta": beta,
+                    "split": "out_of_sample",
+                    "mean_reward": oos_mean,
+                    "std_reward": oos_std,
+                    "experiment": experiment_label or "baseline",
+                    "context": oos_context,
+                }
+            )
+
+            for cell_line_idx, diffusion, drug_idx in wrapped_env.combinations:
                 label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
                 cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
-                    model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, seed=seed
+                    model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
                 )
-                suffix = f"_oos_{str(diffusion).replace(' ', '')}"
+                drug_label = (
+                    wrapped_env.env.drug_names[drug_idx]
+                    if drug_idx is not None and hasattr(wrapped_env.env, "drug_names")
+                    else str(drug_idx)
+                )
+                suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
                 _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
 
     for timesteps, rewards, stds, label in reward_curves:
@@ -527,3 +614,28 @@ def evaluate(
     ax.legend(fontsize=18)
     _ensure_results_dir(results_dir)
     plt.savefig(os.path.join(results_dir, f"rewards_beta_{beta}{label_suffix}.png"))
+
+    if aggregate_metrics:
+        metrics_df = pd.DataFrame(aggregate_metrics)
+        metrics_path = os.path.join(results_dir, f"aggregate_metrics_beta_{beta}{label_suffix}.csv")
+        metrics_df.to_csv(metrics_path, index=False)
+
+        plt.figure(figsize=(12, 8))
+        ax_metrics = sns.barplot(data=metrics_df, x="algo", y="mean_reward", hue="split", errorbar=None)
+        for patch, (_, row) in zip(ax_metrics.patches, metrics_df.iterrows()):
+            ax_metrics.errorbar(
+                patch.get_x() + patch.get_width() / 2,
+                row["mean_reward"],
+                yerr=row["std_reward"],
+                fmt="none",
+                ecolor="black",
+                elinewidth=1,
+                capsize=4,
+            )
+        ax_metrics.set_ylabel("Mean episode reward", fontsize=16)
+        ax_metrics.set_xlabel("Algorithm", fontsize=16)
+        ax_metrics.legend(title="Split", fontsize=12)
+        ax_metrics.tick_params(axis="both", labelsize=12)
+        plt.tight_layout()
+        plt.savefig(os.path.join(results_dir, f"aggregate_rewards_beta_{beta}{label_suffix}.png"))
+        plt.close()

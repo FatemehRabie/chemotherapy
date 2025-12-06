@@ -27,7 +27,7 @@ class ReactionDiffusionEnv(gym.Env):
 
     metadata = {'render_modes': ['human']}  # Specify supported render modes here
 
-    def __init__(self, render_mode=None, observation_noise=None, process_noise=None, cell_line=None):
+    def __init__(self, render_mode=None, observation_noise=None, process_noise=None, cell_line=None, drug=None, diffusion=None):
         self.render_mode = render_mode
         super(ReactionDiffusionEnv, self).__init__()
         # Load GDSC drug sensitivity data
@@ -53,6 +53,8 @@ class ReactionDiffusionEnv(gym.Env):
         self.noise_level = self.observation_noise
         self.process_noise = process_noise if process_noise is not None else noise_scale
         self.pinned_cell_line = self._resolve_cell_line(cell_line)
+        self.pinned_drug = self._resolve_drug(drug)
+        self.pinned_diffusion = diffusion
         self.reset() # The environment supports random initial states for robust learning.
 
     def _resolve_cell_line(self, cell_line):
@@ -64,6 +66,16 @@ class ReactionDiffusionEnv(gym.Env):
                 raise ValueError(f"Unknown cell line '{cell_line}' requested for pinning")
             return lookup[cell_line]
         return int(cell_line)
+
+    def _resolve_drug(self, drug):
+        if drug is None:
+            return None
+        if isinstance(drug, str):
+            lookup = {name: idx for idx, name in enumerate(self.drug_names)}
+            if drug not in lookup:
+                raise ValueError(f"Unknown drug '{drug}' requested for pinning")
+            return lookup[drug]
+        return int(drug)
 
     def seed(self, seed=None):
         """
@@ -94,16 +106,20 @@ class ReactionDiffusionEnv(gym.Env):
         if options is not None:
             random_cell_line = options.get('cell_line', None)
             d_array = options.get('diffusion', None)
+            drug_idx = options.get('drug', None)
         else:
-            random_cell_line, d_array = None, None
+            random_cell_line, d_array, drug_idx = None, None, None
         # Use provided options or randomly select values
         if random_cell_line is None:
             # Randomly select a cell line from the GDSC2 data
             random_cell_line = self.pinned_cell_line if self.pinned_cell_line is not None else np.random.randint(0, high=len(self.cancer_cell_lines))
         if d_array is None:
             # Initialize the diffusion rates
-            d_array = np.random.uniform(low=0.0, high=0.001, size=(3,))
+            d_array = self.pinned_diffusion if self.pinned_diffusion is not None else np.random.uniform(low=0.0, high=0.001, size=(3,))
+        if drug_idx is None:
+            drug_idx = self.pinned_drug if self.pinned_drug is not None else None
         self.cell_line = self.cancer_cell_lines[random_cell_line]
+        self.drug_idx = drug_idx
         # Update the Ansarizadeh model parameters
         self.ansarizadeh.update({'dtu': d_array[0], 'di': d_array[1], 'du': d_array[2]})
         n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.mean(x)**2) + np.random.exponential(scale=self.process_noise),
@@ -136,17 +152,20 @@ class ReactionDiffusionEnv(gym.Env):
         counter = 0
         reward = 0.0    # Initialize reward
         # Filter and extract IC50 value for the random cell line and drug
+        selected_drug_idx = self.drug_idx if self.drug_idx is not None else action[2]
         sensitivity_data = self.gdsc_data[(self.gdsc_data['CELL_LINE_NAME'] == self.cell_line) &
-                                    (self.gdsc_data['DRUG_NAME'] == self.drug_names[action[2]])]
+                                    (self.gdsc_data['DRUG_NAME'] == self.drug_names[selected_drug_idx])]
         a2 = 1.0 - sensitivity_data['AUC'].values[0] if not sensitivity_data.empty else 0.3
         self.ansarizadeh.update({'a2': a2})
         # Apply the action to the environment
-        n_trj, tu_trj, i_trj, u_trj = iterate(reaction_diffusion, batch(time=(action[0]+1)*PDE_number_of_steps),
+        patched_action = list(action)
+        patched_action[2] = selected_drug_idx
+        n_trj, tu_trj, i_trj, u_trj = iterate(reaction_diffusion, batch(time=(patched_action[0]+1)*PDE_number_of_steps),
                                             self.n,
                                             self.tu,
                                             self.i,
                                             self.u,
-                                            dt=PDE_step_length, f_kwargs=self.ansarizadeh, uc = 0.1*action[1],
+                                            dt=PDE_step_length, f_kwargs=self.ansarizadeh, uc = 0.1*patched_action[1],
                                             substeps=PDE_number_of_substeps)
         # Update state variables
         self.n = n_trj.time[-1]
@@ -158,10 +177,10 @@ class ReactionDiffusionEnv(gym.Env):
                                                   self.i.numpy() + self.noise_level * np.random.randn(s_disc, s_disc, s_disc),
                                                   self.u.numpy() + self.noise_level * np.random.randn(s_disc, s_disc, s_disc)], dtype=np.float32)})
         # Reward function
-        for time_step in range((action[0]+1)*PDE_number_of_steps):
+        for time_step in range((patched_action[0]+1)*PDE_number_of_steps):
             tu_step = np.mean(tu_trj.time[time_step].numpy())
             u_step = np.mean(u_trj.time[time_step].numpy())
-            reward -= k1 * tu_step + k2 * u_step + xi * 0.1*action[1] # Scaled action penalty
+            reward -= k1 * tu_step + k2 * u_step + xi * 0.1*patched_action[1] # Scaled action penalty
             if time_step % PDE_number_of_steps == 0:
                 n_step = np.mean(n_trj.time[time_step].numpy())
                 i_step = np.mean(i_trj.time[time_step].numpy())
@@ -169,7 +188,7 @@ class ReactionDiffusionEnv(gym.Env):
                 counter += 1
         reward /= PDE_number_of_steps
         # Increment step count
-        self.time += action[0]+1 # Counter for the number of steps taken in the current episode.
+        self.time += patched_action[0]+1 # Counter for the number of steps taken in the current episode.
         n_step = np.mean(self.n.numpy())
         tu_step = np.mean(self.tu.numpy())
         i_step = np.mean(self.i.numpy())
