@@ -22,7 +22,9 @@ class BaselineController:
     def reset(self, cell_line: int, env: Any) -> None:  # pragma: no cover - tiny helper
         """Hook to (re)initialise controller state before an episode."""
 
-    def predict(self, observation: Any, deterministic: bool = True) -> Tuple[np.ndarray, Optional[None]]:
+    def predict(
+        self, observation: Any, deterministic: bool = True
+    ) -> Tuple[np.ndarray, Optional[np.ndarray]]:
         raise NotImplementedError
 
 

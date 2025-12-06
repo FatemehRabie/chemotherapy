@@ -73,6 +73,8 @@ def _save_episode_plots(run_label: str, beta_label: str, cell_line: str, episode
     states = episode_log["states"]
     episodic_rewards = episode_log["episodic_rewards"]
 
+    os.makedirs("results", exist_ok=True)
+
     plt.figure(figsize=(15, 6))
     plt.plot(np.arange(1, len(dose) + 1), np.array(dose)[:, 0] + 1, "rs", label="Duration")
     plt.plot(np.arange(1, len(dose) + 1), np.array(dose)[:, 1], "g^", label="Dose")
