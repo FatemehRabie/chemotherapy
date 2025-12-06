@@ -61,4 +61,13 @@ python main.py --params-file params.json --betas 0.0 0.01 --num-envs 8
 - **Trained RL Models**: Evaluated with performance metrics, for example the files in the folder `logs_PPO_0.01`.
 - **Visualization**: Training performance plots, for example `rewards_beta_0.01.png`.
 - **Sample test runs**: Saved in the folder `results`.
-- **Summary of training metrics**: Such as wall-clock times, final and best-checkpoint performance, for example `A2C_0.01_training.txt`. 
+- **Summary of training metrics**: Such as wall-clock times, final and best-checkpoint performance, for example `A2C_0.01_training.txt`.
+
+### Keeping large experiments tractable
+
+The evaluation pipeline supports several runtime-friendly options that make wide sweeps or repeated runs easier to manage:
+
+- **Environment caching**: `evaluate` now reuses a single registered `ReactionDiffusion-v0` spec and caches evaluation environments between algorithms to avoid repeated instantiation overhead.
+- **Parallel runs**: Set `parallel_workers` greater than 1 when calling `evaluate` to process algorithms concurrently (plot generation is deferred automatically in this mode).
+- **Plot throttling**: Control episode plotting with `defer_plots=True` to perform all rendering at the end of the run and `plot_episode_stride` (default `1`) to subsample episodes when the environment set is large.
+- **Runtime profiling**: Each evaluation writes a `runtime_profile_beta_<beta>_<label>.txt` file alongside other results that captures wall time, cache effectiveness, and per-algorithm runtimes so you can spot slow configurations quickly.
