@@ -27,8 +27,16 @@ EXPERIMENT_CONFIGS: Dict[str, Dict] = {
         "env_kwargs": {"fixed_cell_line_index": 0}
     },
 }
-
-def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval_episodes, seed, experiment_configs=None):
+def evaluate(
+    algos,
+    total_steps,
+    num_steps,
+    beta,
+    number_of_envs,
+    number_of_eval_episodes=20,
+    seed=19,
+    experiment_configs=None,
+):
     # Set the style and context to make the plot more "publication-ready"
     sns.set_theme()
 
@@ -49,6 +57,7 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
                 num_steps,
                 beta,
                 number_of_envs,
+                number_of_eval_episodes,
                 seed,
                 env_kwargs=env_kwargs,
                 experiment_name=experiment_name,

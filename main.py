@@ -1,7 +1,7 @@
 import pandas as pd
 from utils.evaluation import evaluate, EXPERIMENT_CONFIGS
 
-def process_and_evaluate(file_path):
+def process_and_evaluate(file_path, number_of_eval_episodes=20):
     # Load the Excel file
     df = pd.read_excel(file_path)
 
@@ -32,7 +32,7 @@ def process_and_evaluate(file_path):
             num_steps=32,
             beta=param,
             number_of_envs=4,
-            number_of_eval_episodes=10,
+            number_of_eval_episodes=number_of_eval_episodes,
             seed=19,
             experiment_configs=EXPERIMENT_CONFIGS,
         )

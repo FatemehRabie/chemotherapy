@@ -51,7 +51,7 @@ def beta_scheduling_algorithm(timesteps, current_beta, logger_info, **kwargs):
         return max(new_beta, 0.0001) # Ensure beta doesn't get too small or negative
     return current_beta
 
-def train(algo, total_steps, num_steps, beta, number_of_envs, seed, env_kwargs=None, experiment_name=None):
+def train(algo, total_steps, num_steps, beta, number_of_envs, number_of_eval_episodes, seed, env_kwargs=None, experiment_name=None):
     # Avoid re-registering if the environment is already registered
     if 'ReactionDiffusion-v0' not in gym.envs.registry:
         # Register the custom environment with Gym for easy creation
@@ -80,9 +80,15 @@ def train(algo, total_steps, num_steps, beta, number_of_envs, seed, env_kwargs=N
             verbose=1
         )
         callbacks.append(adaptive_beta_cb)
-    eval_callback = EvalCallback(eval_env, best_model_save_path=f'{log_folder_base}/',
-                                log_path=f'{log_folder_base}/', eval_freq=128,
-                                deterministic=True, render=False)
+    eval_callback = EvalCallback(
+        eval_env,
+        best_model_save_path=f'{log_folder_base}/',
+        log_path=f'{log_folder_base}/',
+        eval_freq=128,
+        n_eval_episodes=number_of_eval_episodes,
+        deterministic=True,
+        render=False,
+    )
     callbacks.insert(0, eval_callback)
     # Use a CallbackList to manage all callbacks
     callback_list = CallbackList(callbacks)
