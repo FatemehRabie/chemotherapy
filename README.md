@@ -62,6 +62,14 @@ for param in [0.01, 0.1, 0.5]:
     evaluate(['PPO','TRPO','A2C'], total_steps=40000, num_steps=32, beta=param, number_of_envs=4, number_of_eval_episodes=10, seed=19)
 ```
 
+To explore how different rollout lengths, learning rates, and entropy/target KL values affect training, you can also launch a lightweight hyperparameter grid search:
+
+```bash
+python run_hyperparameter_search.py
+```
+
+This will populate `results/hyperparam_search_summary.csv` with per-run rewards and wall-clock times, alongside comparison plots in the same folder.
+
 ### Outputs
 
 - **Processed Data**: Saved as `Filtered_GDSC2_No_Duplicates_Averaged.xlsx`.

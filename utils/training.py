@@ -4,6 +4,16 @@ from stable_baselines3.common.callbacks import BaseCallback, EvalCallback, Callb
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 
+
+def _format_param_value(value):
+    """Return a string-safe representation for file and folder names."""
+    return str(value).replace(".", "p").replace("-", "m")
+
+
+def build_run_suffix(beta, num_steps, learning_rate):
+    lr_part = "default" if learning_rate is None else _format_param_value(learning_rate)
+    return f"beta_{_format_param_value(beta)}_n{num_steps}_lr_{lr_part}"
+
 # --- Adaptive Beta Callback ---
 class AdaptiveBetaCallback(BaseCallback):
     """
@@ -51,7 +61,7 @@ def beta_scheduling_algorithm(timesteps, current_beta, logger_info, **kwargs):
         return max(new_beta, 0.0001) # Ensure beta doesn't get too small or negative
     return current_beta
 
-def train(algo, total_steps, num_steps, beta, number_of_envs, seed):
+def train(algo, total_steps, num_steps, beta, number_of_envs, seed, learning_rate=None):
     # Avoid re-registering if the environment is already registered
     if 'ReactionDiffusion-v0' not in gym.envs.registry:
         # Register the custom environment with Gym for easy creation
@@ -65,7 +75,8 @@ def train(algo, total_steps, num_steps, beta, number_of_envs, seed):
     # Create an evaluation environment (optional, for monitoring performance)
     eval_env = Monitor(gym.make('ReactionDiffusion-v0', render_mode='human'))
     callbacks = []
-    log_folder_base = f"./logs_{algo}_{beta}"
+    run_suffix = build_run_suffix(beta, num_steps, learning_rate)
+    log_folder_base = f"./logs_{algo}_{run_suffix}"
     if beta == 0:
         # --- Adaptive beta mode ---
         beta = 0.5  # Initial beta value for adaptive scheduling
@@ -84,16 +95,17 @@ def train(algo, total_steps, num_steps, beta, number_of_envs, seed):
     callback_list = CallbackList(callbacks)
     # Initialize the logger to write both to the console and files
     new_logger = configure(folder=log_folder_base)
+    lr_kwargs = {} if learning_rate is None else {"learning_rate": learning_rate}
     # Initialize the agent
     if algo == 'PPO':
         from stable_baselines3 import PPO
-        model = PPO('MultiInputPolicy', env, n_steps=num_steps, ent_coef = beta, verbose=0, gamma=1.0, seed=seed)
+        model = PPO('MultiInputPolicy', env, n_steps=num_steps, ent_coef = beta, verbose=0, gamma=1.0, seed=seed, **lr_kwargs)
     elif algo == 'TRPO':
         from sb3_contrib import TRPO
-        model = TRPO('MultiInputPolicy', env, n_steps=num_steps, target_kl = beta, verbose=0, gamma=1.0, seed=seed)
+        model = TRPO('MultiInputPolicy', env, n_steps=num_steps, target_kl = beta, verbose=0, gamma=1.0, seed=seed, **lr_kwargs)
     elif algo == 'A2C':
         from stable_baselines3 import A2C
-        model = A2C('MultiInputPolicy', env, n_steps=num_steps, ent_coef = beta, verbose=0, gamma=1.0, seed=seed)
+        model = A2C('MultiInputPolicy', env, n_steps=num_steps, ent_coef = beta, verbose=0, gamma=1.0, seed=seed, **lr_kwargs)
     else:
         raise NotImplementedError()
     # Set the logger for the model
