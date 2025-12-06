@@ -16,6 +16,7 @@ from stable_baselines3.common.evaluation import evaluate_policy
 
 from baselines import is_baseline, make_baseline_policy
 from utils.training import train
+from custom_policies import parse_algo_name
 
 DEFAULT_EVAL_EPISODES = 50
 
@@ -389,6 +390,7 @@ def evaluate(
 
     for algo in algos:
         start_time = time.time()
+        base_algo, _ = parse_algo_name(algo)
         if is_baseline(algo):
             eval_env = _make_eval_env(env_kwargs)
             model = make_baseline_policy(algo, eval_env.action_space, seed=seed)
@@ -499,11 +501,11 @@ def evaluate(
         mean_reward_last, std_reward_last = _evaluate_model(model, model.get_env(), number_of_eval_episodes)
 
         best_model_path = os.path.join(log_folder_base, "best_model")
-        if algo == "PPO":
+        if base_algo == "PPO":
             model = PPO.load(best_model_path)
-        elif algo == "TRPO":
+        elif base_algo == "TRPO":
             model = TRPO.load(best_model_path)
-        elif algo == "A2C":
+        elif base_algo == "A2C":
             model = A2C.load(best_model_path)
 
         eval_env = _make_eval_env(env_kwargs)
