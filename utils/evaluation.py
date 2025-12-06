@@ -1,3 +1,4 @@
+import os
 import time
 from typing import Any, Dict, List, Tuple
 
@@ -175,7 +176,10 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
             file.write(f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}\n")
             file.write(f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} hours")
         # Plot the results
-        for cancer in range(4):
+        available_cell_lines = range(len(eval_env.env.unwrapped.cancer_cell_lines))
+        rollout_cell_lines = list(available_cell_lines)[: number_of_eval_episodes or len(eval_env.env.unwrapped.cancer_cell_lines)]
+
+        for cancer in rollout_cell_lines:
             cell_line, episode_log = _collect_episode(
                 policy=model,
                 eval_env=eval_env,
@@ -186,7 +190,11 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
             _save_episode_plots(algo, str(beta), cell_line, episode_log)
 
         # Load log data from evaluations.npz
-        log_data = np.load(f'./logs_{algo}_{beta}/evaluations.npz')
+        log_path = f'./logs_{algo}_{beta}/evaluations.npz'
+        if not os.path.exists(log_path):
+            continue
+
+        log_data = np.load(log_path)
 
         # Access 'results' from the log data
         ep_rewards = log_data['results']  # Shape: (num_evaluations, num_parallel_envs)
