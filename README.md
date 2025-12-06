@@ -2,10 +2,22 @@
 
 This repository provides tools for processing chemotherapy-related data, training reinforcement learning (RL) models, and evaluating their performance in simulation environments.
 
+**Current version: 1.3.1** (previously 1.3.0)
+
 * a 3-dimensional reaction-diffusion tumour simulator wrapped as an OpenAI Gymnasium environment;
-* training utilities for three deep-RL algorithms (PPO, TRPO, A2C) implemented with **Stable-Baselines3** / **sb3-contrib**;
-* processed GDSC2 dose–response data;
+* training utilities for three deep-RL algorithms (PPO, TRPO, A2C) implemented with **Stable-Baselines3** / **sb3-contrib**, plus a CCN (convolutional context network) policy variant;
+* classical control baselines (fixed schedule, proportional control, random policy) to contextualize RL performance;
+* ablation switches to remove observation noise or pin to a single cell line, enabling component attribution studies;
+* processed GDSC2 dose–response data and both in-sample and held-out (out-of-sample) evaluation pipelines;
 * experiment logs, model checkpoints and evaluation notebooks that reproduce all tables and figures in the paper.
+
+## What’s new in 1.3.1
+
+- Default evaluation coverage increased (50 episodes) with configurable out-of-sample cell-line, diffusion, and drug tests.
+- Added ablation experiments for noise-free and single-cell-line scenarios.
+- Introduced CCN-based agents and integrated them into the experiment suite and plots.
+- Added classical baselines for comparison alongside PPO/TRPO/A2C.
+- Added lightweight hyperparameter tuning utilities and runtime profiling/caching to streamline broader sweeps.
 
 ## Quick Start
 
