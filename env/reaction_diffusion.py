@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import gymnasium as gym
@@ -14,7 +16,7 @@ class ReactionDiffusionEnv(gym.Env):
 
     metadata = {'render_modes': ['human']}  # Specify supported render modes here
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, apply_observation_noise: bool = True, fixed_cell_line_index: Optional[int] = None):
         self.render_mode = render_mode
         super(ReactionDiffusionEnv, self).__init__()
         # Load GDSC drug sensitivity data
@@ -36,7 +38,13 @@ class ReactionDiffusionEnv(gym.Env):
         self.observation_space = gym.spaces.Dict({'variables': gym.spaces.Box(low=0.0, high=np.inf, shape=(4, s_disc, s_disc, s_disc), dtype=np.float32),
                                                   'cell_line': gym.spaces.Discrete(len(self.cancer_cell_lines))})
         self.max_time = episode_time  # Set maximum number of time allowed per episode to prevent infinite loops.
-        self.noise_level = observation_noise_level  # Inject noise into observations
+        self.apply_observation_noise = apply_observation_noise
+        self.noise_level = observation_noise_level if apply_observation_noise else 0.0  # Inject noise into observations
+        self.fixed_cell_line_index = fixed_cell_line_index
+        if fixed_cell_line_index is not None and (
+            fixed_cell_line_index < 0 or fixed_cell_line_index >= len(self.cancer_cell_lines)
+        ):
+            raise ValueError("fixed_cell_line_index must reference a valid cell line")
         self.reset() # The environment supports random initial states for robust learning.
 
     def seed(self, seed=None):
@@ -71,7 +79,9 @@ class ReactionDiffusionEnv(gym.Env):
         else:
             random_cell_line, d_array = None, None
         # Use provided options or randomly select values
-        if random_cell_line is None:
+        if self.fixed_cell_line_index is not None:
+            random_cell_line = int(self.fixed_cell_line_index)
+        elif random_cell_line is None:
             # Randomly select a cell line from the GDSC2 data
             random_cell_line = np.random.randint(0, high=len(self.cancer_cell_lines))
         if d_array is None:

@@ -51,7 +51,7 @@ def beta_scheduling_algorithm(timesteps, current_beta, logger_info, **kwargs):
         return max(new_beta, 0.0001) # Ensure beta doesn't get too small or negative
     return current_beta
 
-def train(algo, total_steps, num_steps, beta, number_of_envs, seed):
+def train(algo, total_steps, num_steps, beta, number_of_envs, seed, env_kwargs=None, experiment_name=None):
     # Avoid re-registering if the environment is already registered
     if 'ReactionDiffusion-v0' not in gym.envs.registry:
         # Register the custom environment with Gym for easy creation
@@ -60,12 +60,16 @@ def train(algo, total_steps, num_steps, beta, number_of_envs, seed):
             entry_point='env.reaction_diffusion:ReactionDiffusionEnv',
             kwargs={'render_mode': 'human'}
         )
+    combined_env_kwargs = {'render_mode': 'human'}
+    if env_kwargs:
+        combined_env_kwargs.update(env_kwargs)
     # Use 'make_vec_env' to create multiple parallel environments
-    env = make_vec_env('ReactionDiffusion-v0', n_envs=number_of_envs, seed=seed, env_kwargs = {'render_mode': 'human'})
+    env = make_vec_env('ReactionDiffusion-v0', n_envs=number_of_envs, seed=seed, env_kwargs=combined_env_kwargs)
     # Create an evaluation environment (optional, for monitoring performance)
-    eval_env = Monitor(gym.make('ReactionDiffusion-v0', render_mode='human'))
+    eval_env = Monitor(gym.make('ReactionDiffusion-v0', **combined_env_kwargs))
     callbacks = []
-    log_folder_base = f"./logs_{algo}_{beta}"
+    experiment_suffix = f"_{experiment_name}" if experiment_name else ""
+    log_folder_base = f"./logs_{algo}_{beta}{experiment_suffix}"
     if beta == 0:
         # --- Adaptive beta mode ---
         beta = 0.5  # Initial beta value for adaptive scheduling
