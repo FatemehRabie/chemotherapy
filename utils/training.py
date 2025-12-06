@@ -4,6 +4,8 @@ from stable_baselines3.common.callbacks import BaseCallback, EvalCallback, Callb
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.logger import configure
 
+from custom_policies import ReactionDiffusionCnnPolicy, parse_algo_name
+
 # --- Adaptive Beta Callback ---
 class AdaptiveBetaCallback(BaseCallback):
     """
@@ -99,10 +101,12 @@ def train(
     # Initialize the logger to write both to the console and files
     new_logger = configure(folder=log_folder_base)
     # Initialize the agent
-    if algo == 'PPO':
+    algo_key, use_cnn_policy = parse_algo_name(algo)
+    policy_class = ReactionDiffusionCnnPolicy if use_cnn_policy else 'MultiInputPolicy'
+    if algo_key == 'PPO':
         from stable_baselines3 import PPO
         model = PPO(
-            'MultiInputPolicy',
+            policy_class,
             env,
             n_steps=num_steps,
             learning_rate=learning_rate,
@@ -111,10 +115,10 @@ def train(
             gamma=gamma if gamma is not None else 1.0,
             seed=seed,
         )
-    elif algo == 'TRPO':
+    elif algo_key == 'TRPO':
         from sb3_contrib import TRPO
         model = TRPO(
-            'MultiInputPolicy',
+            policy_class,
             env,
             n_steps=num_steps,
             learning_rate=learning_rate,
@@ -123,10 +127,10 @@ def train(
             gamma=gamma if gamma is not None else 1.0,
             seed=seed,
         )
-    elif algo == 'A2C':
+    elif algo_key == 'A2C':
         from stable_baselines3 import A2C
         model = A2C(
-            'MultiInputPolicy',
+            policy_class,
             env,
             n_steps=num_steps,
             learning_rate=learning_rate,

@@ -44,7 +44,17 @@ def load_params_file(params_path):
 
 def build_config(args, file_config):
     config = {
-        "algos": ["PPO", "TRPO", "A2C", "FixedSchedule", "ProportionalControl", "RandomPolicy"],
+        "algos": [
+            "PPO",
+            "TRPO",
+            "A2C",
+            "PPO_CNN",
+            "TRPO_CNN",
+            "A2C_CNN",
+            "FixedSchedule",
+            "ProportionalControl",
+            "RandomPolicy",
+        ],
         "betas": [0.0, 0.001, 0.01, 0.1],
         "total_steps": 40000,
         "num_steps": 32,
