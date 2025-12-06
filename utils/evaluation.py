@@ -1,203 +1,270 @@
+import os
 import time
-import pandas as pd
+from itertools import product
+
 import numpy as np
+import pandas as pd
 import seaborn as sns
 import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
+import gymnasium as gym
 from stable_baselines3 import PPO, A2C
 from sb3_contrib import TRPO
-import gymnasium as gym
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
+
 from utils.training import train
 
-def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval_episodes, seed):
-    # Set the style and context to make the plot more "publication-ready"
-    sns.set_theme()
+DEFAULT_EVAL_EPISODES = 50
 
-    # Create the plot
+
+class OutOfSampleEnvWrapper(gym.Wrapper):
+    """Force evaluation episodes to use held-out cell lines or diffusion settings."""
+
+    def __init__(self, env, cell_lines=None, diffusions=None):
+        super().__init__(env)
+        self.cell_line_indices = self._prepare_cell_lines(cell_lines)
+        self.diffusion_settings = self._prepare_diffusions(diffusions)
+        self.combinations = self._build_combinations()
+        self._combo_cursor = 0
+
+    def _prepare_cell_lines(self, cell_lines):
+        if cell_lines is None:
+            return []
+        if not hasattr(self.env, "cancer_cell_lines"):
+            raise AttributeError("Underlying environment must expose `cancer_cell_lines` for cell line selection")
+        lookup = {name: idx for idx, name in enumerate(self.env.cancer_cell_lines)}
+        indices = []
+        for value in cell_lines:
+            if isinstance(value, str):
+                if value not in lookup:
+                    raise ValueError(f"Unknown cell line '{value}' requested for out-of-sample evaluation")
+                indices.append(lookup[value])
+            else:
+                indices.append(int(value))
+        return indices
+
+    @staticmethod
+    def _prepare_diffusions(diffusions):
+        if diffusions is None:
+            return []
+        prepared = []
+        for setting in diffusions:
+            if len(setting) != 3:
+                raise ValueError("Diffusion settings must contain exactly three values")
+            prepared.append([float(val) for val in setting])
+        return prepared
+
+    def _build_combinations(self):
+        cell_lines = self.cell_line_indices or [None]
+        diffusions = self.diffusion_settings or [None]
+        return list(product(cell_lines, diffusions))
+
+    def reset(self, *, seed=None, options=None):
+        options = options or {}
+        cell_line_idx = options.get("cell_line")
+        diffusion = options.get("diffusion")
+        if cell_line_idx is None or diffusion is None:
+            cell_line_idx, diffusion = self._combinations_next(cell_line_idx, diffusion)
+        return self.env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion})
+
+    def _combinations_next(self, cell_line_idx, diffusion):
+        combo_cell_line, combo_diffusion = self.combinations[self._combo_cursor]
+        self._combo_cursor = (self._combo_cursor + 1) % len(self.combinations)
+        return cell_line_idx or combo_cell_line, diffusion or combo_diffusion
+
+
+def _ensure_results_dir(path="./results"):
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _run_episode(model, eval_env, cell_line_idx, diffusion=None, seed=19):
+    obs, info = eval_env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion})
+    cell_line = info.get("cell_line", cell_line_idx)
+    dose, drug_type, drug, states, episodic_rewards = [], [], [], [], []
+    done = False
+    while not done:
+        action, _ = model.predict(obs, deterministic=True)
+        obs, reward, done, _, info = eval_env.step(action)
+        dose.append(action[0:2])
+        drug_type.append(action[2])
+        for _ in range(action[0] + 1):
+            drug.append(0.1 * action[1])
+        for counter in range(len(info) - 1):
+            states.append(info[counter])
+        episodic_rewards.append(reward)
+    return cell_line, np.array(dose), np.array(drug_type), np.array(drug), np.array(states), np.array(episodic_rewards)
+
+
+def _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, suffix=""):
+    results_dir = _ensure_results_dir()
+    safe_cell_line = str(cell_line).replace(" ", "_")
+    plt.figure(figsize=(15, 6))
+    plt.plot(np.arange(1, len(dose) + 1), dose[:, 0] + 1, "rs", label="Duration")
+    plt.plot(np.arange(1, len(dose) + 1), dose[:, 1], "g^", label="Dose")
+    plt.xlabel("Step", fontsize=20)
+    plt.ylabel("Action", fontsize=20)
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    plt.legend(fontsize=20)
+    plt.grid(True)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.savefig(os.path.join(results_dir, f"{algo}_{beta}_cell_line_{safe_cell_line}_actions{suffix}.png"))
+    plt.close()
+
+    plt.figure(figsize=(12, 8))
+    drug_extended = list(drug) + [drug[-1]]
+    plt.step(range(len(drug_extended)), drug_extended, where="post")
+    plt.xlabel("Time", fontsize=20)
+    plt.ylabel("Dose", fontsize=20)
+    ax = plt.gca()
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
+    plt.grid(True)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.savefig(os.path.join(results_dir, f"{algo}_{beta}_cell_line_{safe_cell_line}_dose{suffix}.png"))
+    plt.close()
+
+    plt.figure(figsize=(12, 8))
+    plt.plot(np.arange(1, len(drug_type) + 1), drug_type, marker="o")
+    plt.xlabel("Step", fontsize=20)
+    plt.ylabel("Drug Type", fontsize=20)
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    plt.grid(True)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.savefig(os.path.join(results_dir, f"{algo}_{beta}_cell_line_{safe_cell_line}_drug_type{suffix}.png"))
+    plt.close()
+
+    plt.figure(figsize=(12, 8))
+    plt.plot(states, label=["Normal cells", "Tumor cells", "Immune cells", "Chemotherapy"])
+    plt.xlabel("Time", fontsize=20)
+    plt.ylabel("Concentration", fontsize=20)
+    plt.legend(fontsize=20)
+    plt.grid(True)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.savefig(os.path.join(results_dir, f"{algo}_{beta}_cell_line_{safe_cell_line}_concentrations{suffix}.png"))
+    plt.close()
+
+    plt.figure(figsize=(12, 8))
+    plt.plot(np.arange(1, len(episodic_rewards) + 1), episodic_rewards, marker="o")
+    plt.xlabel("Step", fontsize=20)
+    plt.ylabel("Reward", fontsize=20)
+    ax = plt.gca()
+    ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
+    plt.grid(True)
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    plt.savefig(os.path.join(results_dir, f"{algo}_{beta}_cell_line_{safe_cell_line}_reward{suffix}.png"))
+    plt.close()
+
+
+def _evaluate_model(model, eval_env, n_eval_episodes):
+    return evaluate_policy(model, eval_env, n_eval_episodes=n_eval_episodes)
+
+
+def _write_results(file_path, lines):
+    with open(file_path, "w") as file:
+        for line in lines:
+            file.write(f"{line}\n")
+
+
+def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval_episodes=None, seed=19, out_of_sample=None):
+    number_of_eval_episodes = number_of_eval_episodes or DEFAULT_EVAL_EPISODES
+    sns.set_theme()
     plt.figure(figsize=(12, 8))
 
     for algo in algos:
-        # Record the start time
         start_time = time.time()
-        # Train the agent
         env, model = train(algo, total_steps, num_steps, beta, number_of_envs, seed)
-        # Record the end time
         end_time = time.time()
-        # Calculate the total runtime
-        total_runtime = (end_time - start_time)/3600
-        # Specify the file to save the runtime and performance
-        file_path = f'{algo}_{beta}_training.txt'
-        # Evaluate the trained agent
-        mean_reward_last, std_reward_last = evaluate_policy(model, model.get_env(), n_eval_episodes=number_of_eval_episodes)
-        # Load the best model saved by EvalCallback
-        best_model_path = f'./logs_{algo}_{beta}/best_model'
-        if algo == 'PPO':
+        total_runtime = (end_time - start_time) / 3600
+
+        file_path = f"{algo}_{beta}_training.txt"
+        mean_reward_last, std_reward_last = _evaluate_model(model, model.get_env(), number_of_eval_episodes)
+
+        best_model_path = f"./logs_{algo}_{beta}/best_model"
+        if algo == "PPO":
             model = PPO.load(best_model_path)
-        elif algo == 'TRPO':
+        elif algo == "TRPO":
             model = TRPO.load(best_model_path)
-        elif algo == 'A2C':
+        elif algo == "A2C":
             model = A2C.load(best_model_path)
-        # Avoid re-registering if the environment is already registered
-        if 'ReactionDiffusion-v0' not in gym.envs.registry:
-            # Register the custom environment with Gym for easy creation
+
+        if "ReactionDiffusion-v0" not in gym.envs.registry:
             gym.envs.registration.register(
-                id='ReactionDiffusion-v0',
-                entry_point='env.reaction_diffusion:ReactionDiffusionEnv',
-                kwargs={'render_mode': 'human'}
+                id="ReactionDiffusion-v0",
+                entry_point="env.reaction_diffusion:ReactionDiffusionEnv",
+                kwargs={"render_mode": "human"}
             )
-        # Create a separate evaluation environment
-        eval_env = Monitor(gym.make('ReactionDiffusion-v0', render_mode='human'))
-        # Evaluate the trained agent
-        mean_reward_best, std_reward_best = evaluate_policy(model, eval_env, n_eval_episodes=number_of_eval_episodes)
-        # Write the total runtime in seconds and the evaluation results to the file
-        with open(file_path, 'w') as file:
-            file.write(f"Mean reward of the last model trained by {algo} (beta = {beta}): {mean_reward_last:.2f} +/- {std_reward_last:.2f}\n")
-            file.write(f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}\n")
-            file.write(f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} hours")
-        # Plot the results
-        for cancer in range(4):
-            obs, info = eval_env.reset(seed = 19, options = {'cell_line': cancer, 'diffusion': [0.001, 0.001, 0.001]})  # Reset the environment to start a new episode
-            cell_line = info['cell_line']
-            dose, drug_type, drug, states, episodic_rewards = [], [], [], [], [] # Lists to store data for plotting
-            done = False
-            # Run a single episode
-            while not done:
-                action, _ = model.predict(obs, deterministic=True)
-                obs, reward, done, _, info = eval_env.step(action)  # Take a step in the environment
-                # Append the current state and reward to the lists for analysis
-                dose.append(action[0:2])
-                drug_type.append(action[2])
-                for _ in range(action[0]+1):
-                    drug.append(0.1*action[1])
-                for counter in range(len(info)-1):
-                    states.append(info[counter])
-                episodic_rewards.append(reward)  # Reward is also wrapped in an extra dimension
-            # First Plot: Dose over Steps
-            # Plotting test results
-            plt.figure(figsize=(15, 6))
-            plt.plot(np.arange(1, len(dose) + 1), np.array(dose)[:, 0] + 1, 'rs', label='Duration')
-            plt.plot(np.arange(1, len(dose) + 1), np.array(dose)[:, 1], 'g^', label='Dose')
-            plt.xlabel('Step', fontsize=20)
-            plt.ylabel('Action', fontsize=20)
-            # Get the current axes
-            ax = plt.gca()
-            # Set integer ticks for both axes
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))  # Ensure x-axis has integers
-            ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))  # Ensure y-axis has integer labels
-            plt.legend(fontsize=20)
-            plt.grid(True)
-            # Increase the font size of the tick labels
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            # Save the figure
-            plt.savefig(f'./results/{algo}_{beta}_cell_line_{cell_line}_actions.png')
-            plt.close()
-            # Second Plot: Drug over Time with y-axis floating points from 0.0 to 1.0
-            # Plotting test results
-            plt.figure(figsize=(12, 8))
-            drug_extended = list(drug) + [drug[-1]]  # Extend with the last value to make the plot step-like
-            plt.step(range(len(drug_extended)), drug_extended, where='post')
-            plt.xlabel('Time', fontsize=20)
-            plt.ylabel('Dose', fontsize=20)
-            # Get the current axes
-            ax = plt.gca()
-            # Set integer ticks for both axes
-            ax.yaxis.set_major_locator(ticker.MultipleLocator(0.1))
-            ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
-            plt.grid(True)
-            # Increase the font size of the tick labels
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            # Save the figure
-            plt.savefig(f'./results/{algo}_{beta}_cell_line_{cell_line}_dose.png')
-            plt.close()
-            # Third Plot: Drug Type over Steps with integer labels on both axes
-            # Plotting test results
-            plt.figure(figsize=(12, 8))
-            plt.plot(np.arange(1, len(drug_type) + 1), drug_type, marker='o')
-            plt.xlabel('Step', fontsize=20)
-            plt.ylabel('Drug Type', fontsize=20)
-            # Get the current axes
-            ax = plt.gca()
-            # Set integer ticks for both axes
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))
-            ax.yaxis.set_major_locator(ticker.MaxNLocator(integer=True))  # Ensure y-axis has integer labels
-            plt.grid(True)
-            # Increase the font size of the tick labels
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            # Save the figure
-            plt.savefig(f'./results/{algo}_{beta}_cell_line_{cell_line}_drug_type.png')
-            plt.close()
-            # Fourth Plot: States over Time
-            # Plotting test results
-            plt.figure(figsize=(12, 8))
-            plt.plot(states, label=['Normal cells', 'Tumor cells', 'Immune cells', 'Chemotherapy'])
-            plt.xlabel('Time', fontsize=20)
-            plt.ylabel('Concentration', fontsize=20)
-            plt.legend(fontsize=20)
-            plt.grid(True)
-            # Increase the font size of the tick labels
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            # Save the figure
-            plt.savefig(f'./results/{algo}_{beta}_cell_line_{cell_line}_concentrations.png')
-            plt.close()
-            # Fifth Plot: Rewards over Steps with integer x-axis labels
-            # Plotting test results
-            plt.figure(figsize=(12, 8))
-            plt.plot(np.arange(1, len(episodic_rewards) + 1), episodic_rewards, marker='o')
-            plt.xlabel('Step', fontsize=20)
-            plt.ylabel('Reward', fontsize=20)
-            # Get the current axes
-            ax = plt.gca()
-            # Set integer ticks for both axes
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(integer=True))  # Ensure x-axis has integers
-            plt.grid(True)
-            # Increase the font size of the tick labels
-            plt.xticks(fontsize=16)
-            plt.yticks(fontsize=16)
-            # Save the figure
-            plt.savefig(f'./results/{algo}_{beta}_cell_line_{cell_line}_reward.png')
-            plt.close()
 
-        # Load log data from evaluations.npz
-        log_data = np.load(f'./logs_{algo}_{beta}/evaluations.npz')
+        eval_env = Monitor(gym.make("ReactionDiffusion-v0", render_mode="human"))
+        mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
 
-        # Access 'results' from the log data
-        ep_rewards = log_data['results']  # Shape: (num_evaluations, num_parallel_envs)
+        _write_results(
+            file_path,
+            [
+                f"Mean reward of the last model trained by {algo} (beta = {beta}): {mean_reward_last:.2f} +/- {std_reward_last:.2f}",
+                f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}",
+                f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} hours",
+                f"Evaluation episodes: {number_of_eval_episodes}",
+            ],
+        )
 
-        # Compute the mean and standard deviation across the parallel environments
-        ep_rew_mean = ep_rewards.mean(axis=1)  # Mean reward across parallel environments
-        ep_rew_std = ep_rewards.std(axis=1)    # Standard deviation across parallel environments
+        for cancer in range(min(4, len(eval_env.env.cancer_cell_lines))):
+            cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
+                model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
+            )
+            _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards)
 
-        # Convert to pandas Series to use rolling functions
+        log_data = np.load(f"./logs_{algo}_{beta}/evaluations.npz")
+        ep_rewards = log_data["results"]
+        ep_rew_mean = ep_rewards.mean(axis=1)
+        ep_rew_std = ep_rewards.std(axis=1)
         ep_rew_mean_series = pd.Series(ep_rew_mean)
         ep_rew_std_series = pd.Series(ep_rew_std)
-
-        # Define a window size (e.g., 5 evaluations)
         window_size = 5
-
-        # Apply smoothing to the mean rewards
         smoothed_rewards = ep_rew_mean_series.rolling(window=window_size).mean()
         smoothed_std = ep_rew_std_series.rolling(window=window_size).mean()
+        sns.lineplot(x=log_data["timesteps"], y=smoothed_rewards, label=algo)
+        plt.fill_between(log_data["timesteps"], smoothed_rewards - smoothed_std, smoothed_rewards + smoothed_std, alpha=0.3)
 
-        # Plot the smoothed line
-        sns.lineplot(x=log_data['timesteps'], y=smoothed_rewards, label=algo)
+        if out_of_sample:
+            oos_cell_lines = out_of_sample.get("cell_lines")
+            oos_diffusions = out_of_sample.get("diffusions")
+            wrapped_env = OutOfSampleEnvWrapper(gym.make("ReactionDiffusion-v0", render_mode="human"), oos_cell_lines, oos_diffusions)
+            oos_eval_env = Monitor(wrapped_env)
+            oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
+            oos_file_path = f"{algo}_{beta}_out_of_sample.txt"
+            _write_results(
+                oos_file_path,
+                [
+                    f"Out-of-sample mean reward of best {algo} model (beta = {beta}): {oos_mean:.2f} +/- {oos_std:.2f}",
+                    f"Evaluation episodes: {number_of_eval_episodes}",
+                    f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
+                    f"Diffusion settings: {oos_diffusions if oos_diffusions else 'random'}",
+                ],
+            )
 
-        # Plot the shaded area for standard deviation
-        plt.fill_between(log_data['timesteps'], smoothed_rewards - smoothed_std, smoothed_rewards + smoothed_std, alpha=0.3)
-    
-    # Add titles and labels with increased font size
-    plt.xlabel('Training Steps', fontsize=24)
-    plt.ylabel('Episode Reward', fontsize=24)
+            for cell_line_idx, diffusion in wrapped_env.combinations:
+                label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
+                cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
+                    model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, seed=seed
+                )
+                suffix = f"_oos_{str(diffusion).replace(' ', '')}"
+                _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, suffix=suffix)
 
-    # Increase the font size of the tick labels
+    plt.xlabel("Training Steps", fontsize=24)
+    plt.ylabel("Episode Reward", fontsize=24)
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
     plt.legend(fontsize=26)
-
-    # Show or save the plot
-    plt.savefig(f'rewards_beta_{beta}.png')
+    _ensure_results_dir()
+    plt.savefig(f"rewards_beta_{beta}.png")
