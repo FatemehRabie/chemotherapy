@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from gymnasium import spaces
-from stable_baselines3.common.policies import MultiInputPolicy
+from stable_baselines3.common.policies import MultiInputActorCriticPolicy
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 CNN_SUFFIX = "_CNN"
@@ -46,7 +46,7 @@ class ReactionDiffusionCnnExtractor(BaseFeaturesExtractor):
         return torch.cat([cnn_out, embedded_cell], dim=1)
 
 
-class ReactionDiffusionCnnPolicy(MultiInputPolicy):
+class ReactionDiffusionCnnPolicy(MultiInputActorCriticPolicy):
     """Multi-input policy using the reaction-diffusion CNN extractor."""
 
     def __init__(self, *args, **kwargs):
