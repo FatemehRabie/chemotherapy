@@ -2,7 +2,7 @@ import argparse
 import json
 import pandas as pd
 
-from utils.evaluation import DEFAULT_EVAL_EPISODES, evaluate
+from utils.evaluation import DEFAULT_EVAL_EPISODES, evaluate, run_hyperparameter_search
 
 
 def parse_args():
@@ -45,6 +45,7 @@ def build_config(args, file_config):
         "number_of_envs": 4,
         "seed": 19,
         "eval_episodes": DEFAULT_EVAL_EPISODES,
+        "hyperparam_search": {"enabled": False, "mode": "grid", "max_trials": 3, "max_seconds": 900},
         "out_of_sample": {"cell_lines": None, "diffusions": None},
         "pinned_cell_line": None,
         "experiments": None,
@@ -104,6 +105,15 @@ def process_and_evaluate(file_path, config):
     eval_episodes = config.get("eval_episodes", DEFAULT_EVAL_EPISODES)
     for beta in config["betas"]:
         for experiment in experiments:
+            env_options = experiment.get("env_options")
+            overrides = run_hyperparameter_search(
+                config["algos"],
+                config,
+                beta,
+                experiment.get("name"),
+                env_kwargs=env_options,
+                search_config=config.get("hyperparam_search"),
+            )
             evaluate(
                 config["algos"],
                 total_steps=config["total_steps"],
@@ -113,8 +123,9 @@ def process_and_evaluate(file_path, config):
                 number_of_eval_episodes=eval_episodes,
                 seed=config["seed"],
                 out_of_sample=config.get("out_of_sample"),
-                env_kwargs=experiment.get("env_options"),
+                env_kwargs=env_options,
                 experiment_label=experiment.get("name"),
+                training_overrides_by_algo=overrides,
             )
 
 

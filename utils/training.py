@@ -51,7 +51,20 @@ def beta_scheduling_algorithm(timesteps, current_beta, logger_info, **kwargs):
         return max(new_beta, 0.0001) # Ensure beta doesn't get too small or negative
     return current_beta
 
-def train(algo, total_steps, num_steps, beta, number_of_envs, seed, env_kwargs=None, log_folder_base=None):
+def train(
+    algo,
+    total_steps,
+    num_steps,
+    beta,
+    number_of_envs,
+    seed,
+    env_kwargs=None,
+    log_folder_base=None,
+    learning_rate=None,
+    gamma=None,
+    entropy_coef=None,
+    target_kl=None,
+):
     env_kwargs = env_kwargs or {}
     # Avoid re-registering if the environment is already registered
     if 'ReactionDiffusion-v0' not in gym.envs.registry:
@@ -88,13 +101,40 @@ def train(algo, total_steps, num_steps, beta, number_of_envs, seed, env_kwargs=N
     # Initialize the agent
     if algo == 'PPO':
         from stable_baselines3 import PPO
-        model = PPO('MultiInputPolicy', env, n_steps=num_steps, ent_coef = beta, verbose=0, gamma=1.0, seed=seed)
+        model = PPO(
+            'MultiInputPolicy',
+            env,
+            n_steps=num_steps,
+            learning_rate=learning_rate,
+            ent_coef=entropy_coef if entropy_coef is not None else beta,
+            verbose=0,
+            gamma=gamma if gamma is not None else 1.0,
+            seed=seed,
+        )
     elif algo == 'TRPO':
         from sb3_contrib import TRPO
-        model = TRPO('MultiInputPolicy', env, n_steps=num_steps, target_kl = beta, verbose=0, gamma=1.0, seed=seed)
+        model = TRPO(
+            'MultiInputPolicy',
+            env,
+            n_steps=num_steps,
+            learning_rate=learning_rate,
+            target_kl=target_kl if target_kl is not None else beta,
+            verbose=0,
+            gamma=gamma if gamma is not None else 1.0,
+            seed=seed,
+        )
     elif algo == 'A2C':
         from stable_baselines3 import A2C
-        model = A2C('MultiInputPolicy', env, n_steps=num_steps, ent_coef = beta, verbose=0, gamma=1.0, seed=seed)
+        model = A2C(
+            'MultiInputPolicy',
+            env,
+            n_steps=num_steps,
+            learning_rate=learning_rate,
+            ent_coef=entropy_coef if entropy_coef is not None else beta,
+            verbose=0,
+            gamma=gamma if gamma is not None else 1.0,
+            seed=seed,
+        )
     else:
         raise NotImplementedError()
     # Set the logger for the model
