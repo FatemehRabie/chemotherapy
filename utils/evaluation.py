@@ -13,6 +13,7 @@ from sb3_contrib import TRPO
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 
+from baselines import is_baseline, make_baseline_policy
 from utils.training import train
 
 DEFAULT_EVAL_EPISODES = 50
@@ -175,6 +176,20 @@ def _write_results(file_path, lines):
             file.write(f"{line}\n")
 
 
+def _ensure_env_registration():
+    if "ReactionDiffusion-v0" not in gym.envs.registry:
+        gym.envs.registration.register(
+            id="ReactionDiffusion-v0",
+            entry_point="env.reaction_diffusion:ReactionDiffusionEnv",
+            kwargs={"render_mode": "human"}
+        )
+
+
+def _make_eval_env(env_kwargs):
+    _ensure_env_registration()
+    return Monitor(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs))
+
+
 def evaluate(
     algos,
     total_steps,
@@ -190,14 +205,73 @@ def evaluate(
     env_kwargs = env_kwargs or {}
     number_of_eval_episodes = number_of_eval_episodes or DEFAULT_EVAL_EPISODES
     sns.set_theme()
-    plt.figure(figsize=(12, 8))
+    fig, ax = plt.subplots(figsize=(12, 8))
 
     safe_label = experiment_label.replace(" ", "_") if experiment_label else ""
     label_suffix = f"_{safe_label}" if safe_label else ""
     results_dir = _ensure_results_dir(os.path.join("results", safe_label) if safe_label else "results")
+    _ensure_env_registration()
+
+    reward_curves = []
+    baseline_rewards = []
 
     for algo in algos:
         start_time = time.time()
+        if is_baseline(algo):
+            eval_env = _make_eval_env(env_kwargs)
+            model = make_baseline_policy(algo, eval_env.action_space, seed=seed)
+            mean_reward, std_reward = _evaluate_model(model, eval_env, number_of_eval_episodes)
+            end_time = time.time()
+            total_runtime = (end_time - start_time) / 3600
+            file_path = os.path.join(results_dir, f"{algo}_{beta}_evaluation{label_suffix}.txt")
+            _write_results(
+                file_path,
+                [
+                    f"Experiment label: {experiment_label or 'baseline'}",
+                    f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
+                    f"Mean reward of the {algo} baseline (beta = {beta}): {mean_reward:.2f} +/- {std_reward:.2f}",
+                    f"Total {algo} runtime: {total_runtime:.2f} hours",
+                    f"Evaluation episodes: {number_of_eval_episodes}",
+                ],
+            )
+
+            for cancer in range(min(4, len(eval_env.env.cancer_cell_lines))):
+                cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
+                    model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
+                )
+                _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+
+            baseline_rewards.append((algo, mean_reward, std_reward))
+
+            if out_of_sample:
+                oos_cell_lines = out_of_sample.get("cell_lines")
+                oos_diffusions = out_of_sample.get("diffusions")
+                wrapped_env = OutOfSampleEnvWrapper(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions)
+                oos_eval_env = Monitor(wrapped_env)
+                oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
+                oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
+                _write_results(
+                    oos_file_path,
+                    [
+                        f"Experiment label: {experiment_label or 'baseline'}",
+                        f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
+                        f"Out-of-sample mean reward of {algo} baseline (beta = {beta}): {oos_mean:.2f} +/- {oos_std:.2f}",
+                        f"Evaluation episodes: {number_of_eval_episodes}",
+                        f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
+                        f"Diffusion settings: {oos_diffusions if oos_diffusions else 'random'}",
+                    ],
+                )
+
+                for cell_line_idx, diffusion in wrapped_env.combinations:
+                    label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
+                    cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
+                        model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, seed=seed
+                    )
+                    suffix = f"_oos_{str(diffusion).replace(' ', '')}"
+                    _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
+
+            continue
+
         log_folder_base = f"./logs_{algo}_{beta}{label_suffix}"
         env, model = train(
             algo,
@@ -223,14 +297,7 @@ def evaluate(
         elif algo == "A2C":
             model = A2C.load(best_model_path)
 
-        if "ReactionDiffusion-v0" not in gym.envs.registry:
-            gym.envs.registration.register(
-                id="ReactionDiffusion-v0",
-                entry_point="env.reaction_diffusion:ReactionDiffusionEnv",
-                kwargs={"render_mode": "human"}
-            )
-
-        eval_env = Monitor(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs))
+        eval_env = _make_eval_env(env_kwargs)
         mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
 
         _write_results(
@@ -260,8 +327,7 @@ def evaluate(
         window_size = 5
         smoothed_rewards = ep_rew_mean_series.rolling(window=window_size).mean()
         smoothed_std = ep_rew_std_series.rolling(window=window_size).mean()
-        sns.lineplot(x=log_data["timesteps"], y=smoothed_rewards, label=algo)
-        plt.fill_between(log_data["timesteps"], smoothed_rewards - smoothed_std, smoothed_rewards + smoothed_std, alpha=0.3)
+        reward_curves.append((log_data["timesteps"], smoothed_rewards.to_numpy(), smoothed_std.to_numpy(), algo))
 
         if out_of_sample:
             oos_cell_lines = out_of_sample.get("cell_lines")
@@ -290,10 +356,21 @@ def evaluate(
                 suffix = f"_oos_{str(diffusion).replace(' ', '')}"
                 _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
 
-    plt.xlabel("Training Steps", fontsize=24)
-    plt.ylabel("Episode Reward", fontsize=24)
-    plt.xticks(fontsize=20)
-    plt.yticks(fontsize=20)
-    plt.legend(fontsize=26)
+    for timesteps, rewards, stds, label in reward_curves:
+        sns.lineplot(x=timesteps, y=rewards, label=label, ax=ax)
+        ax.fill_between(timesteps, rewards - stds, rewards + stds, alpha=0.3)
+
+    if baseline_rewards:
+        x_min, x_max = ax.get_xlim()
+        if x_min == x_max:
+            x_min, x_max = 0, total_steps
+        for label, mean, std in baseline_rewards:
+            ax.axhline(mean, linestyle="--", label=f"{label} mean reward")
+            ax.fill_between([x_min, x_max], [mean - std, mean - std], [mean + std, mean + std], alpha=0.1)
+
+    ax.set_xlabel("Training Steps", fontsize=24)
+    ax.set_ylabel("Episode Reward", fontsize=24)
+    ax.tick_params(axis="both", labelsize=20)
+    ax.legend(fontsize=18)
     _ensure_results_dir(results_dir)
     plt.savefig(os.path.join(results_dir, f"rewards_beta_{beta}{label_suffix}.png"))
