@@ -1,7 +1,11 @@
 import os
 import random
 import time
+from dataclasses import dataclass, field
 from itertools import product
+from typing import Any, Callable, Dict, Hashable, Iterable, List, Optional, Tuple
+
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
@@ -19,6 +23,71 @@ from utils.training import train
 from custom_policies import parse_algo_name
 
 DEFAULT_EVAL_EPISODES = 50
+
+
+@dataclass
+class EpisodePlotData:
+    algo: str
+    beta: float
+    cell_line: Any  # noqa: ANN401 - plotting paths accept arbitrary labels
+    dose: np.ndarray
+    drug_type: np.ndarray
+    drug: np.ndarray
+    states: np.ndarray
+    episodic_rewards: np.ndarray
+    results_dir: str
+    suffix: str = ""
+
+
+@dataclass
+class EvaluationProfiler:
+    cache_hits: int = 0
+    cache_misses: int = 0
+    steps: List[Tuple[str, float]] = field(default_factory=list)
+    started_at: float = field(default_factory=time.time)
+
+    def record(self, label: str, start: float) -> None:
+        self.steps.append((label, time.time() - start))
+
+    def bump_hits(self) -> None:
+        self.cache_hits += 1
+
+    def bump_misses(self) -> None:
+        self.cache_misses += 1
+
+    def write(self, file_path: str) -> None:
+        with open(file_path, "w") as file:
+            file.write("Runtime profile\n")
+            file.write(f"Total wall time: {(time.time() - self.started_at)/3600:.2f} hours\n")
+            file.write(f"Env cache hits: {self.cache_hits}\n")
+            file.write(f"Env cache misses: {self.cache_misses}\n")
+            for label, duration in self.steps:
+                file.write(f"{label}: {duration:.2f} seconds\n")
+
+
+class EvaluationEnvCache:
+    def __init__(self, enabled: bool = True, profiler: Optional[EvaluationProfiler] = None):
+        self.enabled = enabled
+        self.profiler = profiler
+        self._cache: Dict[Hashable, Monitor] = {}
+
+    def get(self, key: Hashable, builder: Callable[[], Monitor]) -> Monitor:
+        if self.enabled and key in self._cache:
+            if self.profiler:
+                self.profiler.bump_hits()
+            return self._cache[key]
+
+        env = builder()
+        if self.enabled:
+            self._cache[key] = env
+        if self.profiler:
+            self.profiler.bump_misses()
+        return env
+
+    def close_all(self) -> None:
+        for env in self._cache.values():
+            if hasattr(env, "close"):
+                env.close()
 
 
 class OutOfSampleEnvWrapper(gym.Wrapper):
@@ -198,13 +267,22 @@ def _write_results(file_path, lines):
             file.write(f"{line}\n")
 
 
+_ENV_ALREADY_REGISTERED = False
+
+
 def _ensure_env_registration():
+    global _ENV_ALREADY_REGISTERED
+    if _ENV_ALREADY_REGISTERED:
+        return
+
     if "ReactionDiffusion-v0" not in gym.envs.registry:
         gym.envs.registration.register(
             id="ReactionDiffusion-v0",
             entry_point="env.reaction_diffusion:ReactionDiffusionEnv",
             kwargs={"render_mode": "human"}
         )
+
+    _ENV_ALREADY_REGISTERED = True
 
 
 def _make_eval_env(env_kwargs):
@@ -366,10 +444,15 @@ def evaluate(
     env_kwargs=None,
     experiment_label=None,
     training_overrides_by_algo=None,
+    parallel_workers=1,
+    reuse_eval_envs=True,
+    defer_plots=False,
+    plot_episode_stride=1,
 ):
     env_kwargs = env_kwargs or {}
     number_of_eval_episodes = number_of_eval_episodes or DEFAULT_EVAL_EPISODES
     training_overrides_by_algo = training_overrides_by_algo or {}
+    plot_episode_stride = max(1, plot_episode_stride)
     sns.set_theme()
     fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -378,9 +461,44 @@ def evaluate(
     results_dir = _ensure_results_dir(os.path.join("results", safe_label) if safe_label else "results")
     _ensure_env_registration()
 
+    profiler = EvaluationProfiler()
+    reuse_eval_envs = reuse_eval_envs and parallel_workers == 1
+    defer_plots = defer_plots or parallel_workers > 1
+    env_cache = EvaluationEnvCache(enabled=reuse_eval_envs, profiler=profiler)
+
     reward_curves = []
     baseline_rewards = []
     aggregate_metrics = []
+    plots_to_generate: List[EpisodePlotData] = []
+    runtime_records = []
+
+    def _cache_key(env_kwargs_map: Dict, namespace: str, extra_parts: Optional[Iterable] = None) -> Tuple:
+        extras = tuple(extra_parts) if extra_parts else tuple()
+        return (namespace, tuple(sorted(env_kwargs_map.items())), extras)
+
+    def _get_eval_env(env_kwargs_map: Dict, cache_namespace: str, extra_parts: Optional[Iterable] = None, builder: Optional[Callable[[], Monitor]] = None):
+        cache_key = _cache_key(env_kwargs_map, cache_namespace, extra_parts)
+        start = time.time()
+        env = env_cache.get(cache_key, builder or (lambda: _make_eval_env(env_kwargs_map)))
+        profiler.record(f"{cache_namespace}_env_acquisition", start)
+        return env
+
+    def _queue_plot(data: EpisodePlotData):
+        if defer_plots:
+            plots_to_generate.append(data)
+        else:
+            _plot_episode(
+                data.algo,
+                data.beta,
+                data.cell_line,
+                data.dose,
+                data.drug_type,
+                data.drug,
+                data.states,
+                data.episodic_rewards,
+                data.results_dir,
+                suffix=data.suffix,
+            )
 
     out_of_sample = out_of_sample or {}
     oos_cell_lines = out_of_sample.get("cell_lines")
@@ -388,11 +506,16 @@ def evaluate(
     oos_drugs = out_of_sample.get("drugs")
     oos_context = f"cell_lines={oos_cell_lines if oos_cell_lines else 'random'}, diffusions={oos_diffusions if oos_diffusions else 'random'}, drugs={oos_drugs if oos_drugs else 'random'}"
 
-    for algo in algos:
+    def _evaluate_algo(algo: str):
         start_time = time.time()
         base_algo, _ = parse_algo_name(algo)
+        local_reward_curves = []
+        local_baseline_rewards = []
+        local_aggregate_metrics = []
+        local_plots: List[EpisodePlotData] = []
+
         if is_baseline(algo):
-            eval_env = _make_eval_env(env_kwargs)
+            eval_env = _get_eval_env(env_kwargs, "standard")
             model = make_baseline_policy(algo, eval_env.action_space, seed=seed)
             mean_reward, std_reward = _evaluate_model(model, eval_env, number_of_eval_episodes)
             end_time = time.time()
@@ -409,7 +532,7 @@ def evaluate(
                 ],
             )
 
-            aggregate_metrics.append(
+            local_aggregate_metrics.append(
                 {
                     "algo": algo,
                     "beta": beta,
@@ -421,19 +544,24 @@ def evaluate(
                 }
             )
 
-            for cancer in range(min(4, len(eval_env.env.cancer_cell_lines))):
+            for cancer in range(0, min(4, len(eval_env.env.cancer_cell_lines)), plot_episode_stride):
                 cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                     model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
                 )
-                _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+                local_plots.append(
+                    EpisodePlotData(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+                )
 
-            baseline_rewards.append((algo, mean_reward, std_reward))
+            local_baseline_rewards.append((algo, mean_reward, std_reward))
 
             if out_of_sample:
-                wrapped_env = OutOfSampleEnvWrapper(
-                    gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+                wrapped_env_builder = lambda: Monitor(
+                    OutOfSampleEnvWrapper(
+                        gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+                    )
                 )
-                oos_eval_env = Monitor(wrapped_env)
+                extra_parts = (tuple(oos_cell_lines or []), tuple(map(tuple, oos_diffusions or [])), tuple(oos_drugs or []))
+                oos_eval_env = _get_eval_env(env_kwargs, "oos", extra_parts=extra_parts, builder=wrapped_env_builder)
                 oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
                 oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
                 _write_results(
@@ -449,7 +577,7 @@ def evaluate(
                     ],
                 )
 
-                aggregate_metrics.append(
+                local_aggregate_metrics.append(
                     {
                         "algo": algo,
                         "beta": beta,
@@ -461,7 +589,16 @@ def evaluate(
                     }
                 )
 
-                for cell_line_idx, diffusion, drug_idx in wrapped_env.combinations:
+                if hasattr(oos_eval_env, "env") and isinstance(oos_eval_env.env, OutOfSampleEnvWrapper):
+                    wrapped_env = oos_eval_env.env
+                else:
+                    wrapped_env = OutOfSampleEnvWrapper(
+                        gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+                    )
+
+                for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
+                    if idx % plot_episode_stride != 0:
+                        continue
                     label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
                     cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                         model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
@@ -472,9 +609,28 @@ def evaluate(
                         else str(drug_idx)
                     )
                     suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
-                    _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
+                    local_plots.append(
+                        EpisodePlotData(
+                            algo,
+                            beta,
+                            label or cell_line,
+                            dose,
+                            drug_type,
+                            drug,
+                            states,
+                            episodic_rewards,
+                            results_dir,
+                            suffix=suffix,
+                        )
+                    )
 
-            continue
+            return {
+                "reward_curves": local_reward_curves,
+                "baseline_rewards": local_baseline_rewards,
+                "aggregate_metrics": local_aggregate_metrics,
+                "plots": local_plots,
+                "runtime": {"algo": algo, "runtime_hours": (time.time() - start_time) / 3600},
+            }
 
         overrides = training_overrides_by_algo.get(algo, {})
         log_folder_base = overrides.get("log_folder_base") or f"./logs_{algo}_{beta}{label_suffix}"
@@ -508,10 +664,10 @@ def evaluate(
         elif base_algo == "A2C":
             model = A2C.load(best_model_path)
 
-        eval_env = _make_eval_env(env_kwargs)
+        eval_env = _get_eval_env(env_kwargs, "standard")
         mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
 
-        aggregate_metrics.append(
+        local_aggregate_metrics.append(
             {
                 "algo": algo,
                 "beta": beta,
@@ -536,11 +692,13 @@ def evaluate(
             ],
         )
 
-        for cancer in range(min(4, len(eval_env.env.cancer_cell_lines))):
+        for cancer in range(0, min(4, len(eval_env.env.cancer_cell_lines)), plot_episode_stride):
             cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                 model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
             )
-            _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+            local_plots.append(
+                EpisodePlotData(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+            )
 
         log_data = np.load(os.path.join(log_folder_base, "evaluations.npz"))
         ep_rewards = log_data["results"]
@@ -551,13 +709,16 @@ def evaluate(
         window_size = 5
         smoothed_rewards = ep_rew_mean_series.rolling(window=window_size).mean()
         smoothed_std = ep_rew_std_series.rolling(window=window_size).mean()
-        reward_curves.append((log_data["timesteps"], smoothed_rewards.to_numpy(), smoothed_std.to_numpy(), algo))
+        local_reward_curves.append((log_data["timesteps"], smoothed_rewards.to_numpy(), smoothed_std.to_numpy(), algo))
 
         if out_of_sample:
-            wrapped_env = OutOfSampleEnvWrapper(
-                gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+            wrapped_env_builder = lambda: Monitor(
+                OutOfSampleEnvWrapper(
+                    gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+                )
             )
-            oos_eval_env = Monitor(wrapped_env)
+            extra_parts = (tuple(oos_cell_lines or []), tuple(map(tuple, oos_diffusions or [])), tuple(oos_drugs or []))
+            oos_eval_env = _get_eval_env(env_kwargs, "oos", extra_parts=extra_parts, builder=wrapped_env_builder)
             oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
             oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
             _write_results(
@@ -573,7 +734,7 @@ def evaluate(
                 ],
             )
 
-            aggregate_metrics.append(
+            local_aggregate_metrics.append(
                 {
                     "algo": algo,
                     "beta": beta,
@@ -585,7 +746,16 @@ def evaluate(
                 }
             )
 
-            for cell_line_idx, diffusion, drug_idx in wrapped_env.combinations:
+            if hasattr(oos_eval_env, "env") and isinstance(oos_eval_env.env, OutOfSampleEnvWrapper):
+                wrapped_env = oos_eval_env.env
+            else:
+                wrapped_env = OutOfSampleEnvWrapper(
+                    gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+                )
+
+            for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
+                if idx % plot_episode_stride != 0:
+                    continue
                 label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
                 cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                     model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
@@ -596,7 +766,47 @@ def evaluate(
                     else str(drug_idx)
                 )
                 suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
-                _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
+                local_plots.append(
+                    EpisodePlotData(
+                        algo,
+                        beta,
+                        label or cell_line,
+                        dose,
+                        drug_type,
+                        drug,
+                        states,
+                        episodic_rewards,
+                        results_dir,
+                        suffix=suffix,
+                    )
+                )
+
+        profiler.record(f"{algo}_runtime", start_time)
+
+        return {
+            "reward_curves": local_reward_curves,
+            "baseline_rewards": local_baseline_rewards,
+            "aggregate_metrics": local_aggregate_metrics,
+            "plots": local_plots,
+            "runtime": {"algo": algo, "runtime_hours": total_runtime},
+        }
+
+    def _process_result(result):
+        reward_curves.extend(result.get("reward_curves", []))
+        baseline_rewards.extend(result.get("baseline_rewards", []))
+        aggregate_metrics.extend(result.get("aggregate_metrics", []))
+        runtime_records.append(result.get("runtime", {}))
+        for plot_data in result.get("plots", []):
+            _queue_plot(plot_data)
+
+    if parallel_workers > 1:
+        with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+            futures = {executor.submit(_evaluate_algo, algo): algo for algo in algos}
+            for future in as_completed(futures):
+                _process_result(future.result())
+    else:
+        for algo in algos:
+            _process_result(_evaluate_algo(algo))
 
     for timesteps, rewards, stds, label in reward_curves:
         sns.lineplot(x=timesteps, y=rewards, label=label, ax=ax)
@@ -641,3 +851,37 @@ def evaluate(
         plt.tight_layout()
         plt.savefig(os.path.join(results_dir, f"aggregate_rewards_beta_{beta}{label_suffix}.png"))
         plt.close()
+
+    if defer_plots:
+        for plot_data in plots_to_generate:
+            _plot_episode(
+                plot_data.algo,
+                plot_data.beta,
+                plot_data.cell_line,
+                plot_data.dose,
+                plot_data.drug_type,
+                plot_data.drug,
+                plot_data.states,
+                plot_data.episodic_rewards,
+                plot_data.results_dir,
+                suffix=plot_data.suffix,
+            )
+
+    runtime_profile_path = os.path.join(results_dir, f"runtime_profile_beta_{beta}{label_suffix}.txt")
+    runtime_lines = [
+        "Runtime profile",
+        f"Parallel workers: {parallel_workers}",
+        f"Env cache enabled: {reuse_eval_envs}",
+        f"Env cache hits: {profiler.cache_hits}",
+        f"Env cache misses: {profiler.cache_misses}",
+    ]
+    for record in runtime_records:
+        runtime_lines.append(
+            f"{record.get('algo')}: {record.get('runtime_hours', 0):.2f} hours"
+        )
+    for label, duration in profiler.steps:
+        runtime_lines.append(f"{label}: {duration:.2f} seconds")
+    runtime_lines.append(f"Total wall time: {(time.time() - profiler.started_at)/3600:.2f} hours")
+    _write_results(runtime_profile_path, runtime_lines)
+
+    env_cache.close_all()
