@@ -11,7 +11,15 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.evaluation import evaluate_policy
 from utils.training import train
 
-def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval_episodes, seed):
+def evaluate(
+    algos,
+    total_steps,
+    num_steps,
+    beta,
+    number_of_envs,
+    number_of_eval_episodes=20,
+    seed=19,
+):
     # Set the style and context to make the plot more "publication-ready"
     sns.set_theme()
 
@@ -22,7 +30,15 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
         # Record the start time
         start_time = time.time()
         # Train the agent
-        env, model = train(algo, total_steps, num_steps, beta, number_of_envs, seed)
+        env, model = train(
+            algo,
+            total_steps,
+            num_steps,
+            beta,
+            number_of_envs,
+            number_of_eval_episodes,
+            seed,
+        )
         # Record the end time
         end_time = time.time()
         # Calculate the total runtime
