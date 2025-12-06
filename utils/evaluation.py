@@ -97,8 +97,7 @@ def _run_episode(model, eval_env, cell_line_idx, diffusion=None, seed=19):
     return cell_line, np.array(dose), np.array(drug_type), np.array(drug), np.array(states), np.array(episodic_rewards)
 
 
-def _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, suffix=""):
-    results_dir = _ensure_results_dir()
+def _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=""):
     safe_cell_line = str(cell_line).replace(" ", "_")
     plt.figure(figsize=(15, 6))
     plt.plot(np.arange(1, len(dose) + 1), dose[:, 0] + 1, "rs", label="Duration")
@@ -176,21 +175,47 @@ def _write_results(file_path, lines):
             file.write(f"{line}\n")
 
 
-def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval_episodes=None, seed=19, out_of_sample=None):
+def evaluate(
+    algos,
+    total_steps,
+    num_steps,
+    beta,
+    number_of_envs,
+    number_of_eval_episodes=None,
+    seed=19,
+    out_of_sample=None,
+    env_kwargs=None,
+    experiment_label=None,
+):
+    env_kwargs = env_kwargs or {}
     number_of_eval_episodes = number_of_eval_episodes or DEFAULT_EVAL_EPISODES
     sns.set_theme()
     plt.figure(figsize=(12, 8))
 
+    safe_label = experiment_label.replace(" ", "_") if experiment_label else ""
+    label_suffix = f"_{safe_label}" if safe_label else ""
+    results_dir = _ensure_results_dir(os.path.join("results", safe_label) if safe_label else "results")
+
     for algo in algos:
         start_time = time.time()
-        env, model = train(algo, total_steps, num_steps, beta, number_of_envs, seed)
+        log_folder_base = f"./logs_{algo}_{beta}{label_suffix}"
+        env, model = train(
+            algo,
+            total_steps,
+            num_steps,
+            beta,
+            number_of_envs,
+            seed,
+            env_kwargs=env_kwargs,
+            log_folder_base=log_folder_base,
+        )
         end_time = time.time()
         total_runtime = (end_time - start_time) / 3600
 
-        file_path = f"{algo}_{beta}_training.txt"
+        file_path = os.path.join(results_dir, f"{algo}_{beta}_training{label_suffix}.txt")
         mean_reward_last, std_reward_last = _evaluate_model(model, model.get_env(), number_of_eval_episodes)
 
-        best_model_path = f"./logs_{algo}_{beta}/best_model"
+        best_model_path = os.path.join(log_folder_base, "best_model")
         if algo == "PPO":
             model = PPO.load(best_model_path)
         elif algo == "TRPO":
@@ -205,12 +230,14 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
                 kwargs={"render_mode": "human"}
             )
 
-        eval_env = Monitor(gym.make("ReactionDiffusion-v0", render_mode="human"))
+        eval_env = Monitor(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs))
         mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
 
         _write_results(
             file_path,
             [
+                f"Experiment label: {experiment_label or 'baseline'}",
+                f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
                 f"Mean reward of the last model trained by {algo} (beta = {beta}): {mean_reward_last:.2f} +/- {std_reward_last:.2f}",
                 f"Mean reward of the best model trained by {algo} (beta = {beta}): {mean_reward_best:.2f} +/- {std_reward_best:.2f}",
                 f"Total {algo} (beta = {beta}) runtime: {total_runtime:.2f} hours",
@@ -222,9 +249,9 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
             cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                 model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
             )
-            _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards)
+            _plot_episode(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
 
-        log_data = np.load(f"./logs_{algo}_{beta}/evaluations.npz")
+        log_data = np.load(os.path.join(log_folder_base, "evaluations.npz"))
         ep_rewards = log_data["results"]
         ep_rew_mean = ep_rewards.mean(axis=1)
         ep_rew_std = ep_rewards.std(axis=1)
@@ -239,13 +266,15 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
         if out_of_sample:
             oos_cell_lines = out_of_sample.get("cell_lines")
             oos_diffusions = out_of_sample.get("diffusions")
-            wrapped_env = OutOfSampleEnvWrapper(gym.make("ReactionDiffusion-v0", render_mode="human"), oos_cell_lines, oos_diffusions)
+            wrapped_env = OutOfSampleEnvWrapper(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions)
             oos_eval_env = Monitor(wrapped_env)
             oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
-            oos_file_path = f"{algo}_{beta}_out_of_sample.txt"
+            oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
             _write_results(
                 oos_file_path,
                 [
+                    f"Experiment label: {experiment_label or 'baseline'}",
+                    f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
                     f"Out-of-sample mean reward of best {algo} model (beta = {beta}): {oos_mean:.2f} +/- {oos_std:.2f}",
                     f"Evaluation episodes: {number_of_eval_episodes}",
                     f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
@@ -259,12 +288,12 @@ def evaluate(algos, total_steps, num_steps, beta, number_of_envs, number_of_eval
                     model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, seed=seed
                 )
                 suffix = f"_oos_{str(diffusion).replace(' ', '')}"
-                _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, suffix=suffix)
+                _plot_episode(algo, beta, label or cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir, suffix=suffix)
 
     plt.xlabel("Training Steps", fontsize=24)
     plt.ylabel("Episode Reward", fontsize=24)
     plt.xticks(fontsize=20)
     plt.yticks(fontsize=20)
     plt.legend(fontsize=26)
-    _ensure_results_dir()
-    plt.savefig(f"rewards_beta_{beta}.png")
+    _ensure_results_dir(results_dir)
+    plt.savefig(os.path.join(results_dir, f"rewards_beta_{beta}{label_suffix}.png"))

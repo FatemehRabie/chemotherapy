@@ -5,7 +5,20 @@ from gymnasium.utils import seeding  # Updated seeding import
 from phi.field import CenteredGrid
 from phi.flow import ZERO_GRADIENT, Box, math, iterate, batch
 from simulator.dynamical_system import reaction_diffusion
-from simulator.params import *
+from simulator.params import (
+    PDE_number_of_steps,
+    PDE_step_length,
+    PDE_number_of_substeps,
+    s_disc,
+    episode_time,
+    observation_noise_level,
+    noise_scale,
+    k1,
+    k2,
+    xi,
+    l1,
+    l2,
+)
 
 class ReactionDiffusionEnv(gym.Env):
     """
@@ -14,7 +27,7 @@ class ReactionDiffusionEnv(gym.Env):
 
     metadata = {'render_modes': ['human']}  # Specify supported render modes here
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode=None, observation_noise=None, process_noise=None, cell_line=None):
         self.render_mode = render_mode
         super(ReactionDiffusionEnv, self).__init__()
         # Load GDSC drug sensitivity data
@@ -36,8 +49,21 @@ class ReactionDiffusionEnv(gym.Env):
         self.observation_space = gym.spaces.Dict({'variables': gym.spaces.Box(low=0.0, high=np.inf, shape=(4, s_disc, s_disc, s_disc), dtype=np.float32),
                                                   'cell_line': gym.spaces.Discrete(len(self.cancer_cell_lines))})
         self.max_time = episode_time  # Set maximum number of time allowed per episode to prevent infinite loops.
-        self.noise_level = observation_noise_level  # Inject noise into observations
+        self.observation_noise = observation_noise if observation_noise is not None else observation_noise_level
+        self.noise_level = self.observation_noise
+        self.process_noise = process_noise if process_noise is not None else noise_scale
+        self.pinned_cell_line = self._resolve_cell_line(cell_line)
         self.reset() # The environment supports random initial states for robust learning.
+
+    def _resolve_cell_line(self, cell_line):
+        if cell_line is None:
+            return None
+        if isinstance(cell_line, str):
+            lookup = {name: idx for idx, name in enumerate(self.cancer_cell_lines)}
+            if cell_line not in lookup:
+                raise ValueError(f"Unknown cell line '{cell_line}' requested for pinning")
+            return lookup[cell_line]
+        return int(cell_line)
 
     def seed(self, seed=None):
         """
@@ -73,20 +99,20 @@ class ReactionDiffusionEnv(gym.Env):
         # Use provided options or randomly select values
         if random_cell_line is None:
             # Randomly select a cell line from the GDSC2 data
-            random_cell_line = np.random.randint(0, high=len(self.cancer_cell_lines))
+            random_cell_line = self.pinned_cell_line if self.pinned_cell_line is not None else np.random.randint(0, high=len(self.cancer_cell_lines))
         if d_array is None:
             # Initialize the diffusion rates
             d_array = np.random.uniform(low=0.0, high=0.001, size=(3,))
         self.cell_line = self.cancer_cell_lines[random_cell_line]
         # Update the Ansarizadeh model parameters
         self.ansarizadeh.update({'dtu': d_array[0], 'di': d_array[1], 'du': d_array[2]})
-        n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.mean(x)**2) + np.random.exponential(scale=noise_scale), 
+        n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.mean(x)**2) + np.random.exponential(scale=self.process_noise),
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        tu0 = CenteredGrid(lambda x: 1 - 0.75 * math.cosh(math.mean(x))**-1 + np.random.exponential(scale=noise_scale), 
+        tu0 = CenteredGrid(lambda x: 1 - 0.75 * math.cosh(math.mean(x))**-1 + np.random.exponential(scale=self.process_noise),
                            boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        i0 = CenteredGrid(lambda x: 0.375 - 0.235 * math.cosh(math.mean(x))**-2 + np.random.exponential(scale=noise_scale), 
+        i0 = CenteredGrid(lambda x: 0.375 - 0.235 * math.cosh(math.mean(x))**-2 + np.random.exponential(scale=self.process_noise),
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        u0 = CenteredGrid(lambda x: math.cosh(math.mean(x))**-1 + np.random.exponential(scale=noise_scale), 
+        u0 = CenteredGrid(lambda x: math.cosh(math.mean(x))**-1 + np.random.exponential(scale=self.process_noise),
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)  # Initial drug concentration
         # Reset the environment's state variables
         self.n = n0

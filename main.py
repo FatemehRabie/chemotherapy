@@ -25,6 +25,7 @@ def parse_args():
         "--out-of-sample-diffusions",
         help="JSON list of diffusion triplets for out-of-sample evaluation",
     )
+    parser.add_argument("--pinned-cell-line", help="Cell line name or index for single-cell-line experiments")
     return parser.parse_args()
 
 
@@ -45,6 +46,8 @@ def build_config(args, file_config):
         "seed": 19,
         "eval_episodes": DEFAULT_EVAL_EPISODES,
         "out_of_sample": {"cell_lines": None, "diffusions": None},
+        "pinned_cell_line": None,
+        "experiments": None,
     }
 
     config.update(file_config)
@@ -63,6 +66,8 @@ def build_config(args, file_config):
         config["seed"] = args.seed
     if args.eval_episodes:
         config["eval_episodes"] = args.eval_episodes
+    if args.pinned_cell_line:
+        config["pinned_cell_line"] = args.pinned_cell_line
 
     out_sample = config.get("out_of_sample", {}) or {}
     if args.out_of_sample_cell_lines is not None:
@@ -85,18 +90,32 @@ def process_and_evaluate(file_path, config):
     output_file_path_no_duplicates = "./Filtered_GDSC2_No_Duplicates_Averaged.xlsx"
     df_no_duplicates.to_excel(output_file_path_no_duplicates, index=False)
 
+    valid_cell_line = valid_cell_lines[0] if len(valid_cell_lines) else None
+    experiments = config.get("experiments") or [
+        {"name": "baseline", "env_options": {}},
+        {"name": "no-noise", "env_options": {"observation_noise": 0.0, "process_noise": 0.0}},
+    ]
+
+    pinned_cell_line = config.get("pinned_cell_line", valid_cell_line) or valid_cell_line
+    single_line_present = any(exp.get("name") == "single-cell-line" for exp in experiments)
+    if pinned_cell_line is not None and not single_line_present:
+        experiments.append({"name": "single-cell-line", "env_options": {"cell_line": pinned_cell_line}})
+
     eval_episodes = config.get("eval_episodes", DEFAULT_EVAL_EPISODES)
     for beta in config["betas"]:
-        evaluate(
-            config["algos"],
-            total_steps=config["total_steps"],
-            num_steps=config["num_steps"],
-            beta=beta,
-            number_of_envs=config["number_of_envs"],
-            number_of_eval_episodes=eval_episodes,
-            seed=config["seed"],
-            out_of_sample=config.get("out_of_sample"),
-        )
+        for experiment in experiments:
+            evaluate(
+                config["algos"],
+                total_steps=config["total_steps"],
+                num_steps=config["num_steps"],
+                beta=beta,
+                number_of_envs=config["number_of_envs"],
+                number_of_eval_episodes=eval_episodes,
+                seed=config["seed"],
+                out_of_sample=config.get("out_of_sample"),
+                env_kwargs=experiment.get("env_options"),
+                experiment_label=experiment.get("name"),
+            )
 
 
 def main():
