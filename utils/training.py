@@ -68,6 +68,9 @@ def train(
     target_kl=None,
 ):
     env_kwargs = env_kwargs or {}
+    # Stable-Baselines3 requires a concrete learning rate value; default to the
+    # library's typical choice when none is provided via overrides.
+    learning_rate = learning_rate if learning_rate is not None else 3e-4
     # Avoid re-registering if the environment is already registered
     if 'ReactionDiffusion-v0' not in gym.envs.registry:
         # Register the custom environment with Gym for easy creation
