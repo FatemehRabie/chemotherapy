@@ -899,3 +899,10 @@ def evaluate(
     _write_results(runtime_profile_path, runtime_lines)
 
     env_cache.close_all()
+
+    return {
+        "aggregate_metrics": aggregate_metrics,
+        "baseline_rewards": baseline_rewards,
+        "reward_curves": reward_curves,
+        "runtime": runtime_records,
+    }
