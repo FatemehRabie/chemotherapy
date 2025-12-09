@@ -122,13 +122,13 @@ class ReactionDiffusionEnv(gym.Env):
         self.drug_idx = drug_idx
         # Update the Ansarizadeh model parameters
         self.ansarizadeh.update({'dtu': d_array[0], 'di': d_array[1], 'du': d_array[2]})
-        n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.mean(x)**2) + np.random.exponential(scale=self.process_noise),
+        n0 = CenteredGrid(lambda x: 0.2 * math.exp(-2 * math.vec_length(x)**2) + np.random.exponential(scale=self.process_noise),
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        tu0 = CenteredGrid(lambda x: 1 - 0.75 * math.cosh(math.mean(x))**-1 + np.random.exponential(scale=self.process_noise),
+        tu0 = CenteredGrid(lambda x: 1 - 0.75 * math.cosh(math.vec_length(x))**-1 + np.random.exponential(scale=self.process_noise),
                            boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        i0 = CenteredGrid(lambda x: 0.375 - 0.235 * math.cosh(math.mean(x))**-2 + np.random.exponential(scale=self.process_noise),
+        i0 = CenteredGrid(lambda x: 0.375 - 0.235 * math.cosh(math.vec_length(x))**-2 + np.random.exponential(scale=self.process_noise),
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)
-        u0 = CenteredGrid(lambda x: math.cosh(math.mean(x))**-1 + np.random.exponential(scale=self.process_noise),
+        u0 = CenteredGrid(lambda x: math.cosh(math.vec_length(x))**-1 + np.random.exponential(scale=self.process_noise),
                           boundary = ZERO_GRADIENT, bounds = Box['x,y,z', -2:2, -2:2, -2:2], x=s_disc, y=s_disc, z=s_disc)  # Initial drug concentration
         # Reset the environment's state variables
         self.n = n0
