@@ -2,7 +2,7 @@
 
 This repository provides tools for processing chemotherapy-related data, training reinforcement learning (RL) models, and evaluating their performance in simulation environments.
 
-**Current version: 1.3.1** (previously 1.3.0)
+**Current version: 1.3.2** (previously 1.3.1)
 
 * a 3-dimensional reaction-diffusion tumour simulator wrapped as an OpenAI Gymnasium environment;
 * training utilities for three deep-RL algorithms (PPO, TRPO, A2C) implemented with **Stable-Baselines3** / **sb3-contrib**, plus a CCN (convolutional context network) policy variant;
@@ -11,8 +11,9 @@ This repository provides tools for processing chemotherapy-related data, trainin
 * processed GDSC2 dose–response data and both in-sample and held-out (out-of-sample) evaluation pipelines;
 * experiment logs, model checkpoints and evaluation notebooks that reproduce all tables and figures in the paper.
 
-## What’s new in 1.3.1
+## What’s new in 1.3.2
 
+- Documented the executed PPO/TRPO/A2C beta sweeps in run order so experiment provenance is clear alongside the saved logs.
 - Default evaluation coverage increased (50 episodes) with configurable out-of-sample cell-line, diffusion, and drug tests.
 - Added ablation experiments for noise-free and single-cell-line scenarios.
 - Introduced CCN-based agents and integrated them into the experiment suite and plots.
@@ -74,6 +75,23 @@ python main.py --params-file params.json --betas 0.0 0.01 --num-envs 8
 - **Visualization**: Training performance plots, for example `rewards_beta_0.01.png`.
 - **Sample test runs**: Saved in the folder `results`.
 - **Summary of training metrics**: Such as wall-clock times, final and best-checkpoint performance, for example `A2C_0.01_training.txt`.
+
+### Experiments run (in order)
+
+The logged experiments follow the default beta sweep order (`[0.0, 0.001, 0.01, 0.1]`) across base algorithms (`PPO`, `TRPO`, `A2C`). Each run produced the corresponding `*_training.txt` file and episode plots in `results/`:
+
+1. PPO with beta = 0.0 (`PPO_0.0_training.txt`)
+2. TRPO with beta = 0.0 (`TRPO_0.0_training.txt`)
+3. A2C with beta = 0.0 (`A2C_0.0_training.txt`)
+4. PPO with beta = 0.001 (`PPO_0.001_training.txt`)
+5. TRPO with beta = 0.001 (`TRPO_0.001_training.txt`)
+6. A2C with beta = 0.001 (`A2C_0.001_training.txt`)
+7. PPO with beta = 0.01 (`PPO_0.01_training.txt`)
+8. TRPO with beta = 0.01 (`TRPO_0.01_training.txt`)
+9. A2C with beta = 0.01 (`A2C_0.01_training.txt`)
+10. PPO with beta = 0.1 (`PPO_0.1_training.txt`)
+11. TRPO with beta = 0.1 (`TRPO_0.1_training.txt`)
+12. A2C with beta = 0.1 (`A2C_0.1_training.txt`)
 
 ### Keeping large experiments tractable
 
