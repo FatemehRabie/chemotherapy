@@ -290,6 +290,16 @@ def _make_eval_env(env_kwargs):
     return Monitor(gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs))
 
 
+def _unwrap_env(env):
+    """Return the base environment beneath any gym wrappers."""
+
+    current = env
+    while hasattr(current, "env") and getattr(current, "env") is not current:
+        current = getattr(current, "env")
+
+    return getattr(current, "unwrapped", current)
+
+
 def _prepare_search_candidates(search_config, base_num_steps, max_trials, rng):
     base_num_steps = base_num_steps or 32
     learning_rates = search_config.get("learning_rates") or [3e-4, 1e-4]
@@ -544,7 +554,8 @@ def evaluate(
                 }
             )
 
-            for cancer in range(0, min(4, len(eval_env.env.cancer_cell_lines)), plot_episode_stride):
+            base_env = _unwrap_env(eval_env)
+            for cancer in range(0, min(4, len(base_env.cancer_cell_lines)), plot_episode_stride):
                 cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                     model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
                 )
@@ -595,17 +606,18 @@ def evaluate(
                     wrapped_env = OutOfSampleEnvWrapper(
                         gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
                     )
+                base_env = _unwrap_env(wrapped_env)
 
                 for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
                     if idx % plot_episode_stride != 0:
                         continue
-                    label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
+                    label = base_env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
                     cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                         model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
                     )
                     drug_label = (
-                        wrapped_env.env.drug_names[drug_idx]
-                        if drug_idx is not None and hasattr(wrapped_env.env, "drug_names")
+                        base_env.drug_names[drug_idx]
+                        if drug_idx is not None and hasattr(base_env, "drug_names")
                         else str(drug_idx)
                     )
                     suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
@@ -692,7 +704,8 @@ def evaluate(
             ],
         )
 
-        for cancer in range(0, min(4, len(eval_env.env.cancer_cell_lines)), plot_episode_stride):
+        base_env = _unwrap_env(eval_env)
+        for cancer in range(0, min(4, len(base_env.cancer_cell_lines)), plot_episode_stride):
             cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
                 model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
             )
@@ -720,66 +733,67 @@ def evaluate(
             extra_parts = (tuple(oos_cell_lines or []), tuple(map(tuple, oos_diffusions or [])), tuple(oos_drugs or []))
             oos_eval_env = _get_eval_env(env_kwargs, "oos", extra_parts=extra_parts, builder=wrapped_env_builder)
             oos_mean, oos_std = _evaluate_model(model, oos_eval_env, number_of_eval_episodes)
-            oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
-            _write_results(
-                oos_file_path,
-                [
-                    f"Experiment label: {experiment_label or 'baseline'}",
-                    f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
-                    f"Out-of-sample mean reward of best {algo} model (beta = {beta}): {oos_mean:.2f} +/- {oos_std:.2f}",
-                    f"Evaluation episodes: {number_of_eval_episodes}",
-                    f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
-                    f"Diffusion settings: {oos_diffusions if oos_diffusions else 'random'}",
-                    f"Drugs: {oos_drugs if oos_drugs else 'random'}",
-                ],
+        oos_file_path = os.path.join(results_dir, f"{algo}_{beta}_out_of_sample{label_suffix}.txt")
+        _write_results(
+            oos_file_path,
+            [
+                f"Experiment label: {experiment_label or 'baseline'}",
+                f"Environment kwargs: {env_kwargs if env_kwargs else 'default'}",
+                f"Out-of-sample mean reward of best {algo} model (beta = {beta}): {oos_mean:.2f} +/- {oos_std:.2f}",
+                f"Evaluation episodes: {number_of_eval_episodes}",
+                f"Cell lines: {oos_cell_lines if oos_cell_lines else 'random'}",
+                f"Diffusion settings: {oos_diffusions if oos_diffusions else 'random'}",
+                f"Drugs: {oos_drugs if oos_drugs else 'random'}",
+            ],
+        )
+
+        local_aggregate_metrics.append(
+            {
+                "algo": algo,
+                "beta": beta,
+                "split": "out_of_sample",
+                "mean_reward": oos_mean,
+                "std_reward": oos_std,
+                "experiment": experiment_label or "baseline",
+                "context": oos_context,
+            }
+        )
+
+        if hasattr(oos_eval_env, "env") and isinstance(oos_eval_env.env, OutOfSampleEnvWrapper):
+            wrapped_env = oos_eval_env.env
+        else:
+            wrapped_env = OutOfSampleEnvWrapper(
+                gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
             )
+        base_env = _unwrap_env(wrapped_env)
 
-            local_aggregate_metrics.append(
-                {
-                    "algo": algo,
-                    "beta": beta,
-                    "split": "out_of_sample",
-                    "mean_reward": oos_mean,
-                    "std_reward": oos_std,
-                    "experiment": experiment_label or "baseline",
-                    "context": oos_context,
-                }
+        for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
+            if idx % plot_episode_stride != 0:
+                continue
+            label = base_env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
+            cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
+                model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
             )
-
-            if hasattr(oos_eval_env, "env") and isinstance(oos_eval_env.env, OutOfSampleEnvWrapper):
-                wrapped_env = oos_eval_env.env
-            else:
-                wrapped_env = OutOfSampleEnvWrapper(
-                    gym.make("ReactionDiffusion-v0", render_mode="human", **env_kwargs), oos_cell_lines, oos_diffusions, oos_drugs
+            drug_label = (
+                base_env.drug_names[drug_idx]
+                if drug_idx is not None and hasattr(base_env, "drug_names")
+                else str(drug_idx)
+            )
+            suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
+            local_plots.append(
+                EpisodePlotData(
+                    algo,
+                    beta,
+                    label or cell_line,
+                    dose,
+                    drug_type,
+                    drug,
+                    states,
+                    episodic_rewards,
+                    results_dir,
+                    suffix=suffix,
                 )
-
-            for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
-                if idx % plot_episode_stride != 0:
-                    continue
-                label = wrapped_env.env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
-                cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
-                    model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
-                )
-                drug_label = (
-                    wrapped_env.env.drug_names[drug_idx]
-                    if drug_idx is not None and hasattr(wrapped_env.env, "drug_names")
-                    else str(drug_idx)
-                )
-                suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
-                local_plots.append(
-                    EpisodePlotData(
-                        algo,
-                        beta,
-                        label or cell_line,
-                        dose,
-                        drug_type,
-                        drug,
-                        states,
-                        episodic_rewards,
-                        results_dir,
-                        suffix=suffix,
-                    )
-                )
+            )
 
         profiler.record(f"{algo}_runtime", start_time)
 
