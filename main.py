@@ -20,7 +20,9 @@ def parse_args():
     parser.add_argument("--reduced-total-steps", type=int, help="Training steps for reduced sweeps")
     parser.add_argument("--num-steps", type=int, help="Rollout steps per update")
     parser.add_argument("--num-envs", type=int, help="Number of parallel environments")
+    parser.add_argument("--parallel-workers", type=int, help="Parallel evaluation workers")
     parser.add_argument("--seed", type=int, help="Random seed")
+    parser.add_argument("--device", help="Device to run models on (e.g., cuda, cpu)")
     parser.add_argument("--eval-episodes", type=int, help="Override the number of evaluation episodes")
     parser.add_argument(
         "--out-of-sample-cell-lines",
@@ -61,10 +63,12 @@ def build_config(args, file_config):
             "RandomPolicy",
         ],
         "betas": [0.0, 0.001, 0.01, 0.1],
-        "total_steps": 40000,
-        "reduced_total_steps": 10000,
+        "total_steps": 20000,
+        "reduced_total_steps": 5000,
         "num_steps": 32,
-        "number_of_envs": 4,
+        "number_of_envs": 8,
+        "device": "auto",
+        "parallel_workers": 2,
         "seed": 19,
         "eval_episodes": DEFAULT_EVAL_EPISODES,
         "hyperparam_search": {"enabled": False, "mode": "grid", "max_trials": 3, "max_seconds": 900},
@@ -86,8 +90,12 @@ def build_config(args, file_config):
         config["num_steps"] = args.num_steps
     if args.num_envs:
         config["number_of_envs"] = args.num_envs
+    if args.parallel_workers:
+        config["parallel_workers"] = args.parallel_workers
     if args.seed:
         config["seed"] = args.seed
+    if args.device:
+        config["device"] = args.device
     if args.eval_episodes:
         config["eval_episodes"] = args.eval_episodes
     if args.pinned_cell_line:
@@ -207,6 +215,8 @@ def process_and_evaluate(file_path, config):
             out_of_sample=out_of_sample,
             env_kwargs=env_variants["baseline"],
             experiment_label="baseline",
+            parallel_workers=config.get("parallel_workers", 1),
+            device=config.get("device"),
         )
         sweep_metrics.extend(result.get("aggregate_metrics", []))
         all_metrics.extend(result.get("aggregate_metrics", []))
@@ -229,6 +239,8 @@ def process_and_evaluate(file_path, config):
             out_of_sample=out_of_sample,
             env_kwargs=env_variants["baseline"],
             experiment_label="baseline",
+            parallel_workers=config.get("parallel_workers", 1),
+            device=config.get("device"),
         )
         all_metrics.extend(result.get("aggregate_metrics", []))
 
@@ -251,6 +263,8 @@ def process_and_evaluate(file_path, config):
                 out_of_sample=out_of_sample,
                 env_kwargs=env_kwargs,
                 experiment_label=label,
+                parallel_workers=config.get("parallel_workers", 1),
+                device=config.get("device"),
             )
             all_metrics.extend(result.get("aggregate_metrics", []))
 
@@ -270,6 +284,7 @@ def process_and_evaluate(file_path, config):
         best_env_label,
         env_kwargs=best_env_kwargs,
         search_config=config.get("hyperparam_search"),
+        device=config.get("device"),
     )
 
     final_algos = [best_algo] + BASELINE_ALGOS
@@ -285,6 +300,8 @@ def process_and_evaluate(file_path, config):
         env_kwargs=best_env_kwargs,
         experiment_label=f"{best_env_label}-final",
         training_overrides_by_algo=overrides,
+        parallel_workers=config.get("parallel_workers", 1),
+        device=config.get("device"),
     )
 
 

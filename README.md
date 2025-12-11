@@ -2,7 +2,7 @@
 
 This repository provides tools for processing chemotherapy-related data, training reinforcement learning (RL) models, and evaluating their performance in simulation environments.
 
-**Current version: 1.3.2** (previously 1.3.1)
+**Current version: 1.4.0** (previously 1.3.2)
 
 * a 3-dimensional reaction-diffusion tumour simulator wrapped as an OpenAI Gymnasium environment;
 * training utilities for three deep-RL algorithms (PPO, TRPO, A2C) implemented with **Stable-Baselines3** / **sb3-contrib**, plus a CCN (convolutional context network) policy variant;
@@ -11,14 +11,11 @@ This repository provides tools for processing chemotherapy-related data, trainin
 * processed GDSC2 dose–response data and both in-sample and held-out (out-of-sample) evaluation pipelines;
 * experiment logs, model checkpoints and evaluation notebooks that reproduce all tables and figures in the paper.
 
-## What’s new in 1.3.2
+## What’s new in 1.4.0
 
-- Documented the executed PPO/TRPO/A2C beta sweeps in run order so experiment provenance is clear alongside the saved logs.
-- Default evaluation coverage increased (50 episodes) with configurable out-of-sample cell-line, diffusion, and drug tests.
-- Added ablation experiments for noise-free and single-cell-line scenarios.
-- Introduced CCN-based agents and integrated them into the experiment suite and plots.
-- Added classical baselines for comparison alongside PPO/TRPO/A2C.
-- Added lightweight hyperparameter tuning utilities and runtime profiling/caching to streamline broader sweeps.
+- Faster end-to-end experiments: default training steps reduced by ~50% (20k main runs / 5k sweeps) with an 8-env rollout, optional parallel evaluation workers, and automatic GPU selection (`--device` override available).
+- Improved output organization: plots are grouped into `results/<label>/plots/` subfolders (reward curves, aggregates, episodes, out-of-sample) and LaTeX tables are written to `results/<label>/tables/` alongside CSV metrics.
+- Richer reporting: aggregate heatmaps for experiment vs. algorithm performance, runtime profiles that note the active device, and clearer README guidance on configuring speed/quality trade-offs.
 
 ## Quick Start
 
@@ -34,7 +31,7 @@ This repository provides tools for processing chemotherapy-related data, trainin
 
 #### 1. Process data and train RL models
 
-The default workflow cleans the GDSC dataset, trains PPO/TRPO/A2C agents, and evaluates them with 50 evaluation episodes per checkpoint:
+The default workflow cleans the GDSC dataset, trains PPO/TRPO/A2C agents (20k steps with 8 parallel environments by default), and evaluates them with 50 evaluation episodes per checkpoint using auto-selected GPU/CPU acceleration:
 
 ```bash
 python main.py
@@ -68,11 +65,19 @@ Run with the params file and further CLI overrides if needed:
 python main.py --params-file params.json --betas 0.0 0.01 --num-envs 8
 ```
 
+Speed/placement-related flags:
+
+```bash
+# Force a specific accelerator and bump evaluation parallelism
+python main.py --device cuda --parallel-workers 4
+```
+
 ### Outputs
 
 - **Processed Data**: Saved as `Filtered_GDSC2_No_Duplicates_Averaged.xlsx`.
 - **Trained RL Models**: Evaluated with performance metrics, for example the files in the folder `logs_PPO_0.01`.
-- **Visualization**: Training performance plots, for example `rewards_beta_0.01.png`.
+- **Visualization**: Training performance plots grouped under `results/<label>/plots/` (reward curves, aggregate bars/heatmaps, per-episode traces, out-of-sample traces).
+- **Tables**: CSV and LaTeX summaries of aggregate metrics under `results/<label>/tables/` for easy paper/report inclusion.
 - **Sample test runs**: Saved in the folder `results`.
 - **Summary of training metrics**: Such as wall-clock times, final and best-checkpoint performance, for example `A2C_0.01_training.txt`.
 

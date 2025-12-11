@@ -1,4 +1,5 @@
 import gymnasium as gym
+import torch
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback, EvalCallback, CallbackList
 from stable_baselines3.common.env_util import make_vec_env
@@ -66,6 +67,7 @@ def train(
     gamma=None,
     entropy_coef=None,
     target_kl=None,
+    device=None,
 ):
     env_kwargs = env_kwargs or {}
     # Stable-Baselines3 requires a concrete learning rate value; default to the
@@ -80,7 +82,12 @@ def train(
             kwargs={'render_mode': 'human'}
         )
     # Use 'make_vec_env' to create multiple parallel environments
-    env = make_vec_env('ReactionDiffusion-v0', n_envs=number_of_envs, seed=seed, env_kwargs = {'render_mode': 'human', **env_kwargs})
+    env = make_vec_env(
+        'ReactionDiffusion-v0',
+        n_envs=number_of_envs,
+        seed=seed,
+        env_kwargs={'render_mode': 'human', **env_kwargs},
+    )
     # Create an evaluation environment (optional, for monitoring performance)
     eval_env = Monitor(gym.make('ReactionDiffusion-v0', render_mode='human', **env_kwargs))
     callbacks = []
@@ -106,6 +113,7 @@ def train(
     # Initialize the agent
     algo_key, use_cnn_policy = parse_algo_name(algo)
     policy_class = ReactionDiffusionCnnPolicy if use_cnn_policy else 'MultiInputPolicy'
+    resolved_device = device or ("cuda" if torch.cuda.is_available() else "auto")
     if algo_key == 'PPO':
         from stable_baselines3 import PPO
         model = PPO(
@@ -117,6 +125,7 @@ def train(
             verbose=0,
             gamma=gamma if gamma is not None else 1.0,
             seed=seed,
+            device=resolved_device,
         )
     elif algo_key == 'TRPO':
         from sb3_contrib import TRPO
@@ -129,6 +138,7 @@ def train(
             verbose=0,
             gamma=gamma if gamma is not None else 1.0,
             seed=seed,
+            device=resolved_device,
         )
     elif algo_key == 'A2C':
         from stable_baselines3 import A2C
@@ -141,6 +151,7 @@ def train(
             verbose=0,
             gamma=gamma if gamma is not None else 1.0,
             seed=seed,
+            device=resolved_device,
         )
     else:
         raise NotImplementedError()
