@@ -170,6 +170,31 @@ def _ensure_results_dir(path="./results"):
     return path
 
 
+def _prepare_plot_dirs(results_dir: str) -> Dict[str, str]:
+    plot_root = _ensure_results_dir(os.path.join(results_dir, "plots"))
+    return {
+        "root": plot_root,
+        "reward_curves": _ensure_results_dir(os.path.join(plot_root, "reward_curves")),
+        "aggregate": _ensure_results_dir(os.path.join(plot_root, "aggregate")),
+        "episodes": _ensure_results_dir(os.path.join(plot_root, "episodes")),
+        "out_of_sample": _ensure_results_dir(os.path.join(plot_root, "out_of_sample")),
+    }
+
+
+def _write_latex_tables(metrics_df: pd.DataFrame, tables_dir: str, beta: float, label_suffix: str) -> None:
+    os.makedirs(tables_dir, exist_ok=True)
+    latex_path = os.path.join(tables_dir, f"aggregate_metrics_beta_{beta}{label_suffix}.tex")
+    metrics_df.to_latex(latex_path, index=False, float_format="%.2f")
+
+    best_by_split = (
+        metrics_df.sort_values("mean_reward", ascending=False)
+        .groupby(["experiment", "split"], as_index=False)
+        .first()
+    )
+    best_path = os.path.join(tables_dir, f"best_by_split_beta_{beta}{label_suffix}.tex")
+    best_by_split.to_latex(best_path, index=False, float_format="%.2f")
+
+
 def _run_episode(model, eval_env, cell_line_idx, diffusion=None, drug=None, seed=19):
     obs, info = eval_env.reset(seed=seed, options={"cell_line": cell_line_idx, "diffusion": diffusion, "drug": drug})
     cell_line = info.get("cell_line", cell_line_idx)
@@ -345,6 +370,7 @@ def run_hyperparameter_search(
     experiment_label,
     env_kwargs=None,
     search_config=None,
+    device=None,
 ):
     search_config = search_config or {}
     if not search_config.get("enabled"):
@@ -405,6 +431,7 @@ def run_hyperparameter_search(
                 gamma=overrides.get("gamma"),
                 entropy_coef=overrides.get("entropy_coef"),
                 target_kl=overrides.get("target_kl"),
+                device=device,
             )
             eval_env = _make_eval_env(env_kwargs or {})
             mean_reward, std_reward = _evaluate_model(model, eval_env, eval_episodes)
@@ -458,6 +485,7 @@ def evaluate(
     reuse_eval_envs=True,
     defer_plots=False,
     plot_episode_stride=1,
+    device=None,
 ):
     env_kwargs = env_kwargs or {}
     number_of_eval_episodes = number_of_eval_episodes or DEFAULT_EVAL_EPISODES
@@ -469,6 +497,9 @@ def evaluate(
     safe_label = experiment_label.replace(" ", "_") if experiment_label else ""
     label_suffix = f"_{safe_label}" if safe_label else ""
     results_dir = _ensure_results_dir(os.path.join("results", safe_label) if safe_label else "results")
+    plot_dirs = _prepare_plot_dirs(results_dir)
+    tables_dir = _ensure_results_dir(os.path.join(results_dir, "tables"))
+    device = device or "auto"
     _ensure_env_registration()
 
     profiler = EvaluationProfiler()
@@ -560,7 +591,17 @@ def evaluate(
                     model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
                 )
                 local_plots.append(
-                    EpisodePlotData(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+                    EpisodePlotData(
+                        algo,
+                        beta,
+                        cell_line,
+                        dose,
+                        drug_type,
+                        drug,
+                        states,
+                        episodic_rewards,
+                        plot_dirs["episodes"],
+                    )
                 )
 
             local_baseline_rewards.append((algo, mean_reward, std_reward))
@@ -608,33 +649,33 @@ def evaluate(
                     )
                 base_env = _unwrap_env(wrapped_env)
 
-                for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
-                    if idx % plot_episode_stride != 0:
-                        continue
-                    label = base_env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
-                    cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
-                        model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
+            for idx, (cell_line_idx, diffusion, drug_idx) in enumerate(wrapped_env.combinations):
+                if idx % plot_episode_stride != 0:
+                    continue
+                label = base_env.cancer_cell_lines[cell_line_idx] if cell_line_idx is not None else "random_cell_line"
+                cell_line, dose, drug_type, drug, states, episodic_rewards = _run_episode(
+                    model, oos_eval_env, cell_line_idx=cell_line_idx, diffusion=diffusion, drug=drug_idx, seed=seed
+                )
+                drug_label = (
+                    base_env.drug_names[drug_idx]
+                    if drug_idx is not None and hasattr(base_env, "drug_names")
+                    else str(drug_idx)
+                )
+                suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
+                local_plots.append(
+                    EpisodePlotData(
+                        algo,
+                        beta,
+                        label or cell_line,
+                        dose,
+                        drug_type,
+                        drug,
+                        states,
+                        episodic_rewards,
+                        plot_dirs["out_of_sample"],
+                        suffix=suffix,
                     )
-                    drug_label = (
-                        base_env.drug_names[drug_idx]
-                        if drug_idx is not None and hasattr(base_env, "drug_names")
-                        else str(drug_idx)
-                    )
-                    suffix = f"_oos_diff_{str(diffusion).replace(' ', '')}_drug_{drug_label}"
-                    local_plots.append(
-                        EpisodePlotData(
-                            algo,
-                            beta,
-                            label or cell_line,
-                            dose,
-                            drug_type,
-                            drug,
-                            states,
-                            episodic_rewards,
-                            results_dir,
-                            suffix=suffix,
-                        )
-                    )
+                )
 
             return {
                 "reward_curves": local_reward_curves,
@@ -661,6 +702,7 @@ def evaluate(
             gamma=overrides.get("gamma"),
             entropy_coef=overrides.get("entropy_coef"),
             target_kl=overrides.get("target_kl"),
+            device=device,
         )
         end_time = time.time()
         total_runtime = (end_time - start_time) / 3600
@@ -710,7 +752,17 @@ def evaluate(
                 model, eval_env, cell_line_idx=cancer, diffusion=[0.001, 0.001, 0.001], seed=seed
             )
             local_plots.append(
-                EpisodePlotData(algo, beta, cell_line, dose, drug_type, drug, states, episodic_rewards, results_dir)
+                EpisodePlotData(
+                    algo,
+                    beta,
+                    cell_line,
+                    dose,
+                    drug_type,
+                    drug,
+                    states,
+                    episodic_rewards,
+                    plot_dirs["episodes"],
+                )
             )
 
         log_data = np.load(os.path.join(log_folder_base, "evaluations.npz"))
@@ -790,7 +842,7 @@ def evaluate(
                     drug,
                     states,
                     episodic_rewards,
-                    results_dir,
+                    plot_dirs["out_of_sample"],
                     suffix=suffix,
                 )
             )
@@ -838,13 +890,13 @@ def evaluate(
     ax.set_ylabel("Episode Reward", fontsize=24)
     ax.tick_params(axis="both", labelsize=20)
     ax.legend(fontsize=18)
-    _ensure_results_dir(results_dir)
-    plt.savefig(os.path.join(results_dir, f"rewards_beta_{beta}{label_suffix}.png"))
+    plt.savefig(os.path.join(plot_dirs["reward_curves"], f"rewards_beta_{beta}{label_suffix}.png"))
 
     if aggregate_metrics:
         metrics_df = pd.DataFrame(aggregate_metrics)
         metrics_path = os.path.join(results_dir, f"aggregate_metrics_beta_{beta}{label_suffix}.csv")
         metrics_df.to_csv(metrics_path, index=False)
+        _write_latex_tables(metrics_df, tables_dir, beta, label_suffix)
 
         plt.figure(figsize=(12, 8))
         ax_metrics = sns.barplot(data=metrics_df, x="algo", y="mean_reward", hue="split", errorbar=None)
@@ -863,7 +915,18 @@ def evaluate(
         ax_metrics.legend(title="Split", fontsize=12)
         ax_metrics.tick_params(axis="both", labelsize=12)
         plt.tight_layout()
-        plt.savefig(os.path.join(results_dir, f"aggregate_rewards_beta_{beta}{label_suffix}.png"))
+        plt.savefig(os.path.join(plot_dirs["aggregate"], f"aggregate_rewards_beta_{beta}{label_suffix}.png"))
+        plt.close()
+
+        pivot = metrics_df.pivot_table(index="experiment", columns="algo", values="mean_reward")
+        pivot_filled = pivot.fillna(0)
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(pivot_filled, annot=True, fmt=".2f", cmap="viridis")
+        plt.title("Mean reward by experiment and algorithm")
+        plt.ylabel("Experiment")
+        plt.xlabel("Algorithm")
+        plt.tight_layout()
+        plt.savefig(os.path.join(plot_dirs["aggregate"], f"aggregate_heatmap_beta_{beta}{label_suffix}.png"))
         plt.close()
 
     if defer_plots:
@@ -886,6 +949,7 @@ def evaluate(
         "Runtime profile",
         f"Parallel workers: {parallel_workers}",
         f"Env cache enabled: {reuse_eval_envs}",
+        f"Device: {device}",
         f"Env cache hits: {profiler.cache_hits}",
         f"Env cache misses: {profiler.cache_misses}",
     ]
