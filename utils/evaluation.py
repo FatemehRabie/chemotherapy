@@ -22,7 +22,7 @@ from baselines import is_baseline, make_baseline_policy
 from utils.training import train
 from custom_policies import parse_algo_name
 
-DEFAULT_EVAL_EPISODES = 50
+DEFAULT_EVAL_EPISODES = 20
 
 
 @dataclass
@@ -326,7 +326,7 @@ def _unwrap_env(env):
 
 
 def _prepare_search_candidates(search_config, base_num_steps, max_trials, rng):
-    base_num_steps = base_num_steps or 32
+    base_num_steps = base_num_steps or 16
     learning_rates = search_config.get("learning_rates") or [3e-4, 1e-4]
     n_steps_options = search_config.get("n_steps") or [base_num_steps, max(base_num_steps // 2, 8)]
     entropy_or_kl = search_config.get("entropy_or_kl") or [0.001, 0.01]

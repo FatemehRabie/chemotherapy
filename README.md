@@ -13,7 +13,7 @@ This repository provides tools for processing chemotherapy-related data, trainin
 
 ## What’s new in 1.4.0
 
-- Faster end-to-end experiments: default training steps reduced by ~50% (20k main runs / 5k sweeps) with an 8-env rollout, optional parallel evaluation workers, and automatic GPU selection (`--device` override available).
+- Faster end-to-end experiments: default training steps reduced by ~50% (20k main runs / 5k sweeps) with a 4-env rollout using 16-step trajectories, optional parallel evaluation workers, and automatic GPU selection (`--device` override available).
 - Improved output organization: plots are grouped into `results/<label>/plots/` subfolders (reward curves, aggregates, episodes, out-of-sample) and LaTeX tables are written to `results/<label>/tables/` alongside CSV metrics.
 - Richer reporting: aggregate heatmaps for experiment vs. algorithm performance, runtime profiles that note the active device, and clearer README guidance on configuring speed/quality trade-offs.
 
@@ -31,7 +31,7 @@ This repository provides tools for processing chemotherapy-related data, trainin
 
 #### 1. Process data and train RL models
 
-The default workflow cleans the GDSC dataset, trains PPO/TRPO/A2C agents (20k steps with 8 parallel environments by default), and evaluates them with 50 evaluation episodes per checkpoint using auto-selected GPU/CPU acceleration:
+The default workflow cleans the GDSC dataset, trains PPO/TRPO/A2C agents (20k steps with 4 parallel environments by default), and evaluates them with 20 evaluation episodes per checkpoint using auto-selected GPU/CPU acceleration:
 
 ```bash
 python main.py
@@ -73,6 +73,12 @@ Speed/placement-related flags:
 # Force a specific accelerator and bump evaluation parallelism
 python main.py --device cuda --parallel-workers 4
 ```
+
+Core runtime hyperparameters (CLI flag → config key) and how they affect speed/quality:
+
+- `--num-steps` → `num_steps` (default: 16): rollout length per policy update. Shorter rollouts (smaller values) speed up each update and lower memory use at the cost of higher gradient noise.
+- `--num-envs` → `number_of_envs` (default: 4): parallel vector environments for on-policy rollouts. Fewer environments reduce CPU load and coordination overhead but provide fewer samples per update.
+- `--eval-episodes` → `eval_episodes` (default: 20): episodes run during evaluation checkpoints. Lower counts shorten evaluation time but make metrics noisier.
 
 ### Outputs
 
