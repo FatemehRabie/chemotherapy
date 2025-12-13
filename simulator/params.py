@@ -1,7 +1,7 @@
-PDE_number_of_steps = 8
+PDE_number_of_steps = 4
 PDE_step_length = 1.0 / PDE_number_of_steps
 PDE_number_of_substeps = 3
-s_disc = 4
+s_disc = 32
 episode_time = 400
 observation_noise_level = 0.05
 noise_scale = 0.1

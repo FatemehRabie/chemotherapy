@@ -37,6 +37,8 @@ The default workflow cleans the GDSC dataset, trains PPO/TRPO/A2C agents (20k st
 python main.py
 ```
 
+The reaction–diffusion simulator now runs on a (32 × 32 × 32) spatial grid (`s_disc = 32`) with a quarter-length PDE time step (`PDE_step_length = 0.25`, from `PDE_number_of_steps = 4`), so both space and time discretizations are explicit in the defaults.
+
 Use command-line flags to override the defaults (e.g., increase evaluation episodes to 75 and configure held-out test settings):
 
 ```bash
