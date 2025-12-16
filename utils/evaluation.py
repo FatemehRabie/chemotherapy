@@ -10,6 +10,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import matplotlib
+
+# Use a non-interactive backend to avoid Tkinter errors when plotting off the main thread.
+matplotlib.use("Agg")
 import matplotlib.ticker as ticker
 import matplotlib.pyplot as plt
 import gymnasium as gym
