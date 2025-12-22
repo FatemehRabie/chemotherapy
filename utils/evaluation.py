@@ -558,6 +558,11 @@ def evaluate(
         local_baseline_rewards = []
         local_aggregate_metrics = []
         local_plots: List[EpisodePlotData] = []
+        overrides = training_overrides_by_algo.get(algo, {})
+        log_folder_base = overrides.get("log_folder_base") or f"./logs_{algo}_{beta}{label_suffix}"
+        training_file_path = os.path.join(results_dir, f"{algo}_{beta}_training{label_suffix}.txt")
+        best_model_path = os.path.join(log_folder_base, "best_model")
+        file_path = training_file_path
 
         if is_baseline(algo):
             eval_env = _get_eval_env(env_kwargs, "standard")
@@ -689,41 +694,59 @@ def evaluate(
                 "runtime": {"algo": algo, "runtime_hours": (time.time() - start_time) / 3600},
             }
 
-        overrides = training_overrides_by_algo.get(algo, {})
-        log_folder_base = overrides.get("log_folder_base") or f"./logs_{algo}_{beta}{label_suffix}"
-        train_num_steps = overrides.get("n_steps", num_steps)
-        train_seed = overrides.get("seed", seed)
-        env, model = train(
-            algo,
-            total_steps,
-            train_num_steps,
-            beta,
-            number_of_envs,
-            train_seed,
-            env_kwargs=env_kwargs,
-            log_folder_base=log_folder_base,
-            learning_rate=overrides.get("learning_rate"),
-            gamma=overrides.get("gamma"),
-            entropy_coef=overrides.get("entropy_coef"),
-            target_kl=overrides.get("target_kl"),
-            device=device,
-        )
-        end_time = time.time()
-        total_runtime = (end_time - start_time) / 3600
+        model_path = None
+        if os.path.exists(best_model_path):
+            model_path = best_model_path
+        elif os.path.exists(f"{best_model_path}.zip"):
+            model_path = f"{best_model_path}.zip"
 
-        file_path = os.path.join(results_dir, f"{algo}_{beta}_training{label_suffix}.txt")
-        mean_reward_last, std_reward_last = _evaluate_model(model, model.get_env(), number_of_eval_episodes)
+        # Skip retraining whenever a saved model already exists
+        skip_training = os.path.exists(training_file_path) and model_path is not None
 
-        best_model_path = os.path.join(log_folder_base, "best_model")
-        if base_algo == "PPO":
-            model = PPO.load(best_model_path)
-        elif base_algo == "TRPO":
-            model = TRPO.load(best_model_path)
-        elif base_algo == "A2C":
-            model = A2C.load(best_model_path)
+        if skip_training:
+            if base_algo == "PPO":
+                model = PPO.load(model_path)
+            elif base_algo == "TRPO":
+                model = TRPO.load(model_path)
+            elif base_algo == "A2C":
+                model = A2C.load(model_path)
 
-        eval_env = _get_eval_env(env_kwargs, "standard")
-        mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
+            eval_env = _get_eval_env(env_kwargs, "standard")
+            mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
+            mean_reward_last, std_reward_last = mean_reward_best, std_reward_best
+            total_runtime = (time.time() - start_time) / 3600
+        else:
+            train_num_steps = overrides.get("n_steps", num_steps)
+            train_seed = overrides.get("seed", seed)
+            env, model = train(
+                algo,
+                total_steps,
+                train_num_steps,
+                beta,
+                number_of_envs,
+                train_seed,
+                env_kwargs=env_kwargs,
+                log_folder_base=log_folder_base,
+                learning_rate=overrides.get("learning_rate"),
+                gamma=overrides.get("gamma"),
+                entropy_coef=overrides.get("entropy_coef"),
+                target_kl=overrides.get("target_kl"),
+                device=device,
+            )
+            end_time = time.time()
+            total_runtime = (end_time - start_time) / 3600
+            mean_reward_last, std_reward_last = _evaluate_model(model, model.get_env(), number_of_eval_episodes)
+
+            best_model_path = os.path.join(log_folder_base, "best_model")
+            if base_algo == "PPO":
+                model = PPO.load(best_model_path)
+            elif base_algo == "TRPO":
+                model = TRPO.load(best_model_path)
+            elif base_algo == "A2C":
+                model = A2C.load(best_model_path)
+
+            eval_env = _get_eval_env(env_kwargs, "standard")
+            mean_reward_best, std_reward_best = _evaluate_model(model, eval_env, number_of_eval_episodes)
 
         local_aggregate_metrics.append(
             {

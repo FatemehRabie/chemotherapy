@@ -40,9 +40,16 @@ class ReactionDiffusionCnnExtractor(BaseFeaturesExtractor):
         cnn_out = torch.flatten(cnn_out, start_dim=1)
 
         cell_indices = observations["cell_line"].long()
-        if cell_indices.dim() == 1:
-            cell_indices = cell_indices.unsqueeze(-1)
-        embedded_cell = self.cell_embedding(cell_indices).squeeze(1)
+        if cell_indices.dim() == 0:
+            cell_indices = cell_indices.unsqueeze(0)
+        # Stable Baselines can provide the discrete observation with an extra
+        # dimension (e.g., (batch, n_stack)), so collapse any trailing dims and
+        # keep a single index per batch item to align with the CNN output.
+        if cell_indices.dim() >= 2:
+            cell_indices = cell_indices.reshape(cell_indices.shape[0], -1)[:, 0]
+        embedded_cell = self.cell_embedding(cell_indices)
+        if embedded_cell.dim() == 3:
+            embedded_cell = embedded_cell.squeeze(1)
         return torch.cat([cnn_out, embedded_cell], dim=1)
 
 
