@@ -1,0 +1,127 @@
+Logging to ./logs_A2C_0.001_baseline
+------------------------------------
+| eval/                 |          |
+|    mean_ep_length     | 80       |
+|    mean_reward        | -182     |
+| time/                 |          |
+|    total_timesteps    | 512      |
+| train/                |          |
+|    entropy_loss       | -10.3    |
+|    explained_variance | 0        |
+|    learning_rate      | 0.0003   |
+|    n_updates          | 7        |
+|    policy_loss        | -415     |
+|    value_loss         | 2.39e+03 |
+------------------------------------
+-------------------------------------
+| eval/                 |           |
+|    mean_ep_length     | 80        |
+|    mean_reward        | -183      |
+| time/                 |           |
+|    total_timesteps    | 1024      |
+| train/                |           |
+|    entropy_loss       | -10.2     |
+|    explained_variance | -2.38e-07 |
+|    learning_rate      | 0.0003    |
+|    n_updates          | 15        |
+|    policy_loss        | -380      |
+|    value_loss         | 1.85e+03  |
+-------------------------------------
+------------------------------------
+| eval/                 |          |
+|    mean_ep_length     | 80       |
+|    mean_reward        | -183     |
+| time/                 |          |
+|    total_timesteps    | 1536     |
+| train/                |          |
+|    entropy_loss       | -10.2    |
+|    explained_variance | 0        |
+|    learning_rate      | 0.0003   |
+|    n_updates          | 23       |
+|    policy_loss        | -435     |
+|    value_loss         | 2.43e+03 |
+------------------------------------
+------------------------------------
+| eval/                 |          |
+|    mean_ep_length     | 400      |
+|    mean_reward        | -183     |
+| time/                 |          |
+|    total_timesteps    | 2048     |
+| train/                |          |
+|    entropy_loss       | -10.1    |
+|    explained_variance | 0        |
+|    learning_rate      | 0.0003   |
+|    n_updates          | 31       |
+|    policy_loss        | -365     |
+|    value_loss         | 1.78e+03 |
+------------------------------------
+-------------------------------------
+| eval/                 |           |
+|    mean_ep_length     | 80        |
+|    mean_reward        | -184      |
+| time/                 |           |
+|    total_timesteps    | 2560      |
+| train/                |           |
+|    entropy_loss       | -10.1     |
+|    explained_variance | -1.19e-07 |
+|    learning_rate      | 0.0003    |
+|    n_updates          | 39        |
+|    policy_loss        | -250      |
+|    value_loss         | 1.09e+03  |
+-------------------------------------
+-------------------------------------
+| eval/                 |           |
+|    mean_ep_length     | 80        |
+|    mean_reward        | -183      |
+| time/                 |           |
+|    total_timesteps    | 3072      |
+| train/                |           |
+|    entropy_loss       | -10.1     |
+|    explained_variance | -2.38e-07 |
+|    learning_rate      | 0.0003    |
+|    n_updates          | 47        |
+|    policy_loss        | -451      |
+|    value_loss         | 2.68e+03  |
+-------------------------------------
+------------------------------------
+| eval/                 |          |
+|    mean_ep_length     | 80       |
+|    mean_reward        | -183     |
+| time/                 |          |
+|    total_timesteps    | 3584     |
+| train/                |          |
+|    entropy_loss       | -10      |
+|    explained_variance | 0        |
+|    learning_rate      | 0.0003   |
+|    n_updates          | 55       |
+|    policy_loss        | -415     |
+|    value_loss         | 2.24e+03 |
+------------------------------------
+-------------------------------------
+| eval/                 |           |
+|    mean_ep_length     | 80        |
+|    mean_reward        | -183      |
+| time/                 |           |
+|    total_timesteps    | 4096      |
+| train/                |           |
+|    entropy_loss       | -10       |
+|    explained_variance | -2.38e-07 |
+|    learning_rate      | 0.0003    |
+|    n_updates          | 63        |
+|    policy_loss        | -313      |
+|    value_loss         | 1.48e+03  |
+-------------------------------------
+------------------------------------
+| eval/                 |          |
+|    mean_ep_length     | 80       |
+|    mean_reward        | -183     |
+| time/                 |          |
+|    total_timesteps    | 4608     |
+| train/                |          |
+|    entropy_loss       | -9.91    |
+|    explained_variance | 0        |
+|    learning_rate      | 0.0003   |
+|    n_updates          | 71       |
+|    policy_loss        | -327     |
+|    value_loss         | 1.47e+03 |
+------------------------------------

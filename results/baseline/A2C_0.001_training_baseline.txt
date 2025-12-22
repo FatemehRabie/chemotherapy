@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Training hyperparameters: default
+Mean reward of the last model trained by A2C (beta = 0.001): -183.04 +/- 1.21
+Mean reward of the best model trained by A2C (beta = 0.001): -183.15 +/- 1.13
+Total A2C (beta = 0.001) runtime: 10.79 hours
+Evaluation episodes: 20

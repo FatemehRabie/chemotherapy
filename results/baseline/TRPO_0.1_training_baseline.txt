@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Training hyperparameters: default
+Mean reward of the last model trained by TRPO (beta = 0.1): -187.32 +/- 3.32
+Mean reward of the best model trained by TRPO (beta = 0.1): -183.13 +/- 0.95
+Total TRPO (beta = 0.1) runtime: 13.40 hours
+Evaluation episodes: 20

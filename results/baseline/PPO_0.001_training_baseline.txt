@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Training hyperparameters: default
+Mean reward of the last model trained by PPO (beta = 0.001): -183.56 +/- 0.79
+Mean reward of the best model trained by PPO (beta = 0.001): -183.04 +/- 1.16
+Total PPO (beta = 0.001) runtime: 11.62 hours
+Evaluation episodes: 20

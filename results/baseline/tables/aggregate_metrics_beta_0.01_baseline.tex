@@ -1,0 +1,12 @@
+\begin{tabular}{lrlrrll}
+\toprule
+algo & beta & split & mean_reward & std_reward & experiment & context \\
+\midrule
+PPO & 0.01 & in_sample & -183.06 & 0.77 & baseline & standard \\
+PPO & 0.01 & out_of_sample & -183.35 & 1.31 & baseline & cell_lines=random, diffusions=random, drugs=random \\
+TRPO & 0.01 & in_sample & -90.62 & 84.90 & baseline & standard \\
+TRPO & 0.01 & out_of_sample & -109.03 & 90.65 & baseline & cell_lines=random, diffusions=random, drugs=random \\
+A2C & 0.01 & in_sample & -183.25 & 1.12 & baseline & standard \\
+A2C & 0.01 & out_of_sample & -183.33 & 1.10 & baseline & cell_lines=random, diffusions=random, drugs=random \\
+\bottomrule
+\end{tabular}

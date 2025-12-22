@@ -1,0 +1,7 @@
+algo,beta,split,mean_reward,std_reward,experiment,context
+PPO,0.1,in_sample,-110.15758165000003,7.196616204796746,baseline,standard
+PPO,0.1,out_of_sample,-111.3541769,8.184170169724528,baseline,"cell_lines=random, diffusions=random, drugs=random"
+TRPO,0.1,in_sample,-183.12622580000001,0.9531631691739638,baseline,standard
+TRPO,0.1,out_of_sample,-183.18278195,1.0653470012379767,baseline,"cell_lines=random, diffusions=random, drugs=random"
+A2C,0.1,in_sample,-176.44972454999998,61.48613725081005,baseline,standard
+A2C,0.1,out_of_sample,-184.41325239999998,69.64735626874041,baseline,"cell_lines=random, diffusions=random, drugs=random"

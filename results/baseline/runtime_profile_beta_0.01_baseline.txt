@@ -1,0 +1,19 @@
+Runtime profile
+Parallel workers: 2
+Env cache enabled: False
+Device: auto
+Env cache hits: 0
+Env cache misses: 6
+PPO: 11.67 hours
+TRPO: 15.79 hours
+A2C: 8.45 hours
+standard_env_acquisition: 0.39 seconds
+oos_env_acquisition: 0.12 seconds
+standard_env_acquisition: 0.19 seconds
+oos_env_acquisition: 0.13 seconds
+PPO_runtime: 78185.78 seconds
+TRPO_runtime: 80939.58 seconds
+standard_env_acquisition: 0.11 seconds
+oos_env_acquisition: 0.06 seconds
+A2C_runtime: 47301.49 seconds
+Total wall time: 34.86 hours

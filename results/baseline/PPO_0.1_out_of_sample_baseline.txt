@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Out-of-sample mean reward of best PPO model (beta = 0.1): -111.35 +/- 8.18
+Evaluation episodes: 20
+Cell lines: random
+Diffusion settings: random
+Drugs: random
