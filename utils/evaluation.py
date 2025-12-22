@@ -700,9 +700,8 @@ def evaluate(
         elif os.path.exists(f"{best_model_path}.zip"):
             model_path = f"{best_model_path}.zip"
 
-        # Skip retraining whenever a saved model already exists, even if the
-        # previous run failed before writing the training summary file.
-        skip_training = model_path is not None
+        # Skip retraining whenever a saved model already exists
+        skip_training = os.path.exists(training_file_path) and model_path is not None
 
         if skip_training:
             if base_algo == "PPO":
