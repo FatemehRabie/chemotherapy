@@ -2,8 +2,6 @@
 
 This repository provides tools for processing chemotherapy-related data, training reinforcement learning (RL) models, and evaluating their performance in simulation environments.
 
-**Current version: 1.4.0** (previously 1.3.2)
-
 * a 3-dimensional reaction-diffusion tumour simulator wrapped as an OpenAI Gymnasium environment;
 * training utilities for three deep-RL algorithms (PPO, TRPO, A2C) implemented with **Stable-Baselines3** / **sb3-contrib**, plus a CCN (convolutional context network) policy variant;
 * classical control baselines (fixed schedule, proportional control, random policy) to contextualize RL performance;
@@ -11,11 +9,17 @@ This repository provides tools for processing chemotherapy-related data, trainin
 * processed GDSC2 dose–response data and both in-sample and held-out (out-of-sample) evaluation pipelines;
 * experiment logs, model checkpoints and evaluation notebooks that reproduce all tables and figures in the paper.
 
-## What’s new in 1.4.0
+## Current version: 1.4.1 (since 1.3.0)
 
 - Faster end-to-end experiments: default training steps reduced by ~50% (20k main runs / 5k sweeps) with a 4-env rollout using 16-step trajectories, optional parallel evaluation workers, and automatic GPU selection (`--device` override available).
 - Improved output organization: plots are grouped into `results/<label>/plots/` subfolders (reward curves, aggregates, episodes, out-of-sample) and LaTeX tables are written to `results/<label>/tables/` alongside CSV metrics.
 - Richer reporting: aggregate heatmaps for experiment vs. algorithm performance, runtime profiles that note the active device, and clearer README guidance on configuring speed/quality trade-offs.
+- Simulation defaults made explicit: the 32×32×32 reaction–diffusion grid and `PDE_step_length = 0.25` defaults are documented alongside CLI overrides.
+- Evaluation throughput options: environment caching to reduce repeated setup, `parallel_workers` to run algorithms concurrently, and deferred plot generation for faster sweeps.
+- Results packaging: runtime profiles and best-by-split summaries are written with other metrics to make experiment comparisons and regression checks easier.
+- Evaluation configurability: CLI support for per-checkpoint evaluation episodes and explicit out-of-sample targets (cell lines, drugs, diffusion regimes).
+- Experiment reproducibility: documented experiment ordering, baseline logs, and aggregate tables/log snapshots embedded directly in the README.
+- Documentation refresh for the 1.4.1 release, keeping cumulative release notes aligned with the 1.3.0 baseline.
 
 ## Quick Start
 
@@ -15254,4 +15258,3 @@ Cell lines: random
 Drugs: random
 Diffusion regimes: random
 ```
-
