@@ -136,6 +136,50 @@ The following section is an exhaustive, **verbatim** capture of all text-based l
 - PPO: 5056 timesteps (all betas)
 - TRPO: 5056 timesteps (all betas)
 
+### Experiment summary and aggregate metrics
+
+| Experiment | Algorithm | Noise (beta) | Training steps (max total_timesteps) | Eval episodes per periodic eval (from evaluations.npz) | Final eval episodes (training/out-of-sample files) |
+| --- | --- | --- | --- | --- | --- |
+| logs_A2C_0.001_baseline | A2C | 0.001 | 4608 | 5 | N/A |
+| logs_A2C_0.01_baseline | A2C | 0.01 | 4608 | 5 | N/A |
+| logs_A2C_0.0_baseline | A2C | 0.0 | 4608 | 5 | N/A |
+| logs_A2C_0.1_baseline | A2C | 0.1 | 4608 | 5 | N/A |
+| logs_PPO_0.001_baseline | PPO | 0.001 | 5056 | 5 | 20 |
+| logs_PPO_0.01_baseline | PPO | 0.01 | 5056 | 5 | 20 |
+| logs_PPO_0.0_baseline | PPO | 0.0 | 5056 | 5 | 20 |
+| logs_PPO_0.1_baseline | PPO | 0.1 | 5056 | 5 | 20 |
+| logs_TRPO_0.001_baseline | TRPO | 0.001 | 5056 | 5 | 20 |
+| logs_TRPO_0.01_baseline | TRPO | 0.01 | 5056 | 5 | 20 |
+| logs_TRPO_0.0_baseline | TRPO | 0.0 | 5056 | 5 | 20 |
+| logs_TRPO_0.1_baseline | TRPO | 0.1 | 5056 | 5 | 20 |
+
+| Algorithm | Beta | Split | Mean reward (accuracy) | Std reward (variance) | Experiment | Context |
+| --- | --- | --- | --- | --- | --- | --- |
+| PPO | 0.001 | in_sample | -183.04424135000002 | 1.1594728422348752 | baseline | standard |
+| PPO | 0.001 | out_of_sample | -183.29472479999998 | 1.215936047761496 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| TRPO | 0.001 | in_sample | -182.92539195 | 1.2003535651463906 | baseline | standard |
+| TRPO | 0.001 | out_of_sample | -183.36401845 | 1.1979494587154136 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| A2C | 0.001 | in_sample | -183.14955870000003 | 1.1328069456677123 | baseline | standard |
+| A2C | 0.001 | out_of_sample | -183.23462030000002 | 1.1115439702692889 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| PPO | 0.01 | in_sample | -183.06073505 | 0.7741866244893063 | baseline | standard |
+| PPO | 0.01 | out_of_sample | -183.34875425 | 1.3101357108541791 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| TRPO | 0.01 | in_sample | -90.6227288 | 84.90233097130373 | baseline | standard |
+| TRPO | 0.01 | out_of_sample | -109.02980755000002 | 90.65039824885484 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| A2C | 0.01 | in_sample | -183.24970785 | 1.1191620744173878 | baseline | standard |
+| A2C | 0.01 | out_of_sample | -183.32754265 | 1.0996380132428734 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| TRPO | 0.0 | in_sample | -183.137246 | 0.9993568168750339 | baseline | standard |
+| TRPO | 0.0 | out_of_sample | -183.0176288 | 0.9258979513447796 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| PPO | 0.0 | in_sample | -65.41456170000001 | 4.3023773648114485 | baseline | standard |
+| PPO | 0.0 | out_of_sample | -64.6204703 | 5.5985069618575904 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| A2C | 0.0 | in_sample | -183.02007495 | 1.142244227826844 | baseline | standard |
+| A2C | 0.0 | out_of_sample | -183.09081569999998 | 1.1390763696889732 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| PPO | 0.1 | in_sample | -110.15758165000003 | 7.196616204796746 | baseline | standard |
+| PPO | 0.1 | out_of_sample | -111.3541769 | 8.184170169724528 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| TRPO | 0.1 | in_sample | -183.12622580000001 | 0.9531631691739638 | baseline | standard |
+| TRPO | 0.1 | out_of_sample | -183.18278195 | 1.0653470012379767 | baseline | cell_lines=random, diffusions=random, drugs=random |
+| A2C | 0.1 | in_sample | -176.44972454999998 | 61.48613725081005 | baseline | standard |
+| A2C | 0.1 | out_of_sample | -184.41325239999998 | 69.64735626874041 | baseline | cell_lines=random, diffusions=random, drugs=random |
+
 ### Training results (in-sample)
 
 | Algo | Beta (noise) | Mean reward (last model) | Mean reward (best model) | Runtime | Eval episodes |
@@ -15210,5 +15254,4 @@ Cell lines: random
 Drugs: random
 Diffusion regimes: random
 ```
-
 
