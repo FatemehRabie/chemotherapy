@@ -1,0 +1,7 @@
+Experiment label: single-cell-line
+Environment kwargs: {'cell_line': 'C32'}
+Training hyperparameters: default
+Mean reward of the last model trained by PPO (beta = 0.0): -182.79 +/- 0.97
+Mean reward of the best model trained by PPO (beta = 0.0): -59.71 +/- 2.34
+Total PPO (beta = 0.0) runtime: 8.14 hours
+Evaluation episodes: 20

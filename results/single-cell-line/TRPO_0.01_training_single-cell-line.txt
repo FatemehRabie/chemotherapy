@@ -1,0 +1,7 @@
+Experiment label: single-cell-line
+Environment kwargs: {'cell_line': 'C32'}
+Training hyperparameters: default
+Mean reward of the last model trained by TRPO (beta = 0.01): -182.63 +/- 1.06
+Mean reward of the best model trained by TRPO (beta = 0.01): -176.96 +/- 0.59
+Total TRPO (beta = 0.01) runtime: 7.88 hours
+Evaluation episodes: 20

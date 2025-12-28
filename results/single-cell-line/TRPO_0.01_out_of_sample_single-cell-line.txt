@@ -1,0 +1,7 @@
+Experiment label: single-cell-line
+Environment kwargs: {'cell_line': 'C32'}
+Out-of-sample mean reward of best TRPO model (beta = 0.01): -177.38 +/- 0.98
+Evaluation episodes: 20
+Cell lines: random
+Diffusion settings: random
+Drugs: random

@@ -1,0 +1,7 @@
+Experiment label: single-cell-line
+Environment kwargs: {'cell_line': 'C32'}
+Training hyperparameters: default
+Mean reward of the last model trained by A2C (beta = 0.01): -182.98 +/- 1.18
+Mean reward of the best model trained by A2C (beta = 0.01): -183.13 +/- 1.16
+Total A2C (beta = 0.01) runtime: 8.16 hours
+Evaluation episodes: 20

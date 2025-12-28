@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Out-of-sample mean reward of best TRPO_CNN model (beta = 0.01): -193.93 +/- 19.51
+Evaluation episodes: 20
+Cell lines: random
+Diffusion settings: random
+Drugs: random

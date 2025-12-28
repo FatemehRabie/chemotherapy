@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Training hyperparameters: default
+Mean reward of the last model trained by TRPO_CNN (beta = 0.01): -186.29 +/- 9.90
+Mean reward of the best model trained by TRPO_CNN (beta = 0.01): -189.62 +/- 15.37
+Total TRPO_CNN (beta = 0.01) runtime: 7.67 hours
+Evaluation episodes: 20

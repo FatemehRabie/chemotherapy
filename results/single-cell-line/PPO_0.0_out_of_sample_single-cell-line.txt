@@ -1,0 +1,7 @@
+Experiment label: single-cell-line
+Environment kwargs: {'cell_line': 'C32'}
+Out-of-sample mean reward of best PPO model (beta = 0.0): -60.45 +/- 2.68
+Evaluation episodes: 20
+Cell lines: random
+Diffusion settings: random
+Drugs: random

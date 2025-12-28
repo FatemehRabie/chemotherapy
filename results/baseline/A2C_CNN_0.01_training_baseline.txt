@@ -1,0 +1,7 @@
+Experiment label: baseline
+Environment kwargs: default
+Training hyperparameters: default
+Mean reward of the last model trained by A2C_CNN (beta = 0.01): -182.97 +/- 0.98
+Mean reward of the best model trained by A2C_CNN (beta = 0.01): -183.24 +/- 1.09
+Total A2C_CNN (beta = 0.01) runtime: 8.27 hours
+Evaluation episodes: 20
