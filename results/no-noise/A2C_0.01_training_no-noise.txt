@@ -1,0 +1,7 @@
+Experiment label: no-noise
+Environment kwargs: {'observation_noise': 0.0, 'process_noise': 0.0}
+Training hyperparameters: default
+Mean reward of the last model trained by A2C (beta = 0.01): -189.28 +/- 0.01
+Mean reward of the best model trained by A2C (beta = 0.01): -189.17 +/- 0.02
+Total A2C (beta = 0.01) runtime: 8.12 hours
+Evaluation episodes: 20

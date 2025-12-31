@@ -1,0 +1,7 @@
+Experiment label: no-noise
+Environment kwargs: {'observation_noise': 0.0, 'process_noise': 0.0}
+Out-of-sample mean reward of best TRPO model (beta = 0.01): -149.81 +/- 36.27
+Evaluation episodes: 20
+Cell lines: random
+Diffusion settings: random
+Drugs: random

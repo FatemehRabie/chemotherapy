@@ -1,0 +1,11 @@
+Runtime profile
+Parallel workers: 2
+Env cache enabled: False
+Device: auto
+Env cache hits: 0
+Env cache misses: 2
+PPO_CNN: 8.20 hours
+standard_env_acquisition: 0.09 seconds
+oos_env_acquisition: 0.06 seconds
+PPO_CNN_runtime: 46939.12 seconds
+Total wall time: 13.04 hours

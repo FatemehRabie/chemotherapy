@@ -1,0 +1,3 @@
+algo,beta,split,mean_reward,std_reward,experiment,context
+PPO_CNN,0.0,in_sample,-101.16846590000002,58.063716764395764,no-noise,standard
+PPO_CNN,0.0,out_of_sample,-101.52997975,57.848851458383656,no-noise,"cell_lines=random, diffusions=random, drugs=random"

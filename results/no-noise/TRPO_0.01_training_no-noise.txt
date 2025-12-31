@@ -1,0 +1,7 @@
+Experiment label: no-noise
+Environment kwargs: {'observation_noise': 0.0, 'process_noise': 0.0}
+Training hyperparameters: default
+Mean reward of the last model trained by TRPO (beta = 0.01): -70.88 +/- 34.85
+Mean reward of the best model trained by TRPO (beta = 0.01): -144.75 +/- 41.31
+Total TRPO (beta = 0.01) runtime: 8.00 hours
+Evaluation episodes: 20

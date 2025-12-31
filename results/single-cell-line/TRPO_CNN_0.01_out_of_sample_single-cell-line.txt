@@ -1,0 +1,7 @@
+Experiment label: single-cell-line
+Environment kwargs: {'cell_line': 'C32'}
+Out-of-sample mean reward of best TRPO_CNN model (beta = 0.01): -154.59 +/- 3.29
+Evaluation episodes: 20
+Cell lines: random
+Diffusion settings: random
+Drugs: random

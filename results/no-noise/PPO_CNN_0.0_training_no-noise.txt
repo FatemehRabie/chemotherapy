@@ -1,0 +1,7 @@
+Experiment label: no-noise
+Environment kwargs: {'observation_noise': 0.0, 'process_noise': 0.0}
+Training hyperparameters: default
+Mean reward of the last model trained by PPO_CNN (beta = 0.0): -299.06 +/- 5.39
+Mean reward of the best model trained by PPO_CNN (beta = 0.0): -101.17 +/- 58.06
+Total PPO_CNN (beta = 0.0) runtime: 8.20 hours
+Evaluation episodes: 20
