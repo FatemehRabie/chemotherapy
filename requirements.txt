@@ -1,0 +1,33 @@
+# Core dependencies
+numpy>=2.0
+pandas
+openpyxl
+torch
+gymnasium
+
+# Machine Learning / Reinforcement Learning
+stable-baselines3>=2.7.1
+sb3-contrib>=2.7.1
+
+# Scientific Computing / PDEs
+phiflow
+
+# Visualization
+matplotlib
+seaborn
+
+# Standard library modules (included with Python)
+# - argparse
+# - concurrent.futures
+# - dataclasses
+# - itertools
+# - json
+# - os
+# - random
+# - time
+# - typing
+
+# Note: The following modules are part of the packages above:
+# - stable_baselines3.common.*
+# - gymnasium.utils
+# - mpl_toolkits.mplot3d (part of matplotlib)
