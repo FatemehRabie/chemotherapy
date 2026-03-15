@@ -54,18 +54,18 @@ def run_episode(env, policy, seed=42):
 
 def plot_2d_slices(states_dict, time_steps, slice_idx=16, save_path="comparison_2d.png"):
     """
-    Plots 2D mid-slices of the 3D tumor and immune populations over time 
+    Plots 2D mid-slices of the 3D tumor, immune, and drug populations over time 
     for different treatment regimens.
     """
     regimens = list(states_dict.keys())
     num_regimens = len(regimens)
     num_times = len(time_steps)
     
-    fig, axes = plt.subplots(num_regimens * 2, num_times, figsize=(3 * num_times, 3 * num_regimens * 2))
+    fig, axes = plt.subplots(num_regimens * 3, num_times, figsize=(3 * num_times, 3 * num_regimens * 3))
     
     for i, regimen in enumerate(regimens):
-        # Left-margin label describing which regimen the next two rows belong to
-        row_center = 1 - ((i * 2 + 1) / (num_regimens * 2))
+        # Left-margin label describing which regimen the next rows belong to
+        row_center = 1 - ((i * 3 + 1.5) / (num_regimens * 3))
         fig.text(0.02, row_center, regimen, ha="right", va="center", fontsize=13, fontweight="bold", rotation=90)
 
         states = states_dict[regimen]
@@ -77,9 +77,10 @@ def plot_2d_slices(states_dict, time_steps, slice_idx=16, save_path="comparison_
             
             tumor_slice = state[1, slice_idx, :, :]  # Index 1 is Tumor
             immune_slice = state[2, slice_idx, :, :] # Index 2 is Immune
+            drug_slice = state[3, slice_idx, :, :]   # Index 3 is Drug
             
             # Plot Tumor
-            ax_t = axes[i * 2, j]
+            ax_t = axes[i * 3, j]
             ax_t.imshow(tumor_slice, cmap="Reds", vmin=0, vmax=1)
             if j == 0:
                 ax_t.set_ylabel("Tumor", fontsize=12)
@@ -88,11 +89,18 @@ def plot_2d_slices(states_dict, time_steps, slice_idx=16, save_path="comparison_
             ax_t.axis("off")
             
             # Plot Immune
-            ax_i = axes[i * 2 + 1, j]
+            ax_i = axes[i * 3 + 1, j]
             ax_i.imshow(immune_slice, cmap="Blues", vmin=0, vmax=1)
             if j == 0:
                 ax_i.set_ylabel("Immune", fontsize=12)
             ax_i.axis("off")
+            
+            # Plot Drug
+            ax_d = axes[i * 3 + 2, j]
+            ax_d.imshow(drug_slice, cmap="Greens", vmin=0, vmax=1)
+            if j == 0:
+                ax_d.set_ylabel("Drug", fontsize=12)
+            ax_d.axis("off")
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
@@ -101,27 +109,44 @@ def plot_2d_slices(states_dict, time_steps, slice_idx=16, save_path="comparison_
 
 def plot_3d_render(state, title, save_path, threshold=0.2):
     """
-    Creates a 3D scatter plot rendering of the tumor mass.
+    Creates 3D scatter plot renderings of tumor mass and drug concentration side by side.
     """
     tumor_vol = state[1, :, :, :]
+    drug_vol = state[3, :, :, :]
     
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111, projection='3d')
+    fig = plt.figure(figsize=(16, 7))
     
-    # Extract coordinates where tumor concentration is significant
-    z, y, x = np.where(tumor_vol > threshold)
-    c = tumor_vol[tumor_vol > threshold]
+    # Plot Tumor
+    ax_tumor = fig.add_subplot(121, projection='3d')
+    z_t, y_t, x_t = np.where(tumor_vol > threshold)
+    c_t = tumor_vol[tumor_vol > threshold]
     
-    sc = ax.scatter(x, y, z, c=c, cmap='Reds', marker='o', alpha=0.6)
-    fig.colorbar(sc, ax=ax, label='Tumor Density', shrink=0.5)
+    sc_tumor = ax_tumor.scatter(x_t, y_t, z_t, c=c_t, cmap='Reds', marker='o', alpha=0.6)
+    fig.colorbar(sc_tumor, ax=ax_tumor, label='Tumor Density', shrink=0.5)
     
-    ax.set_title(title, fontsize=14)
-    ax.set_xlim(0, 31)
-    ax.set_ylim(0, 31)
-    ax.set_zlim(0, 31)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
+    ax_tumor.set_title(f"{title} - Tumor", fontsize=12)
+    ax_tumor.set_xlim(0, 31)
+    ax_tumor.set_ylim(0, 31)
+    ax_tumor.set_zlim(0, 31)
+    ax_tumor.set_xlabel('X')
+    ax_tumor.set_ylabel('Y')
+    ax_tumor.set_zlabel('Z')
+    
+    # Plot Drug
+    ax_drug = fig.add_subplot(122, projection='3d')
+    z_d, y_d, x_d = np.where(drug_vol > threshold)
+    c_d = drug_vol[drug_vol > threshold]
+    
+    sc_drug = ax_drug.scatter(x_d, y_d, z_d, c=c_d, cmap='Greens', marker='o', alpha=0.6)
+    fig.colorbar(sc_drug, ax=ax_drug, label='Drug Concentration', shrink=0.5)
+    
+    ax_drug.set_title(f"{title} - Drug", fontsize=12)
+    ax_drug.set_xlim(0, 31)
+    ax_drug.set_ylim(0, 31)
+    ax_drug.set_zlim(0, 31)
+    ax_drug.set_xlabel('X')
+    ax_drug.set_ylabel('Y')
+    ax_drug.set_zlabel('Z')
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
