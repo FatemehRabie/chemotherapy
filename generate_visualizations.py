@@ -61,12 +61,12 @@ def plot_2d_slices(states_dict, time_steps, slice_idx=16, save_path="comparison_
     num_regimens = len(regimens)
     num_times = len(time_steps)
     
-    fig, axes = plt.subplots(num_regimens * 3, num_times, figsize=(3 * num_times, 3 * num_regimens * 3))
+    fig, axes = plt.subplots(num_regimens * 3, num_times, figsize=(2 * num_times, 2.2 * num_regimens * 3))
     
     for i, regimen in enumerate(regimens):
         # Left-margin label describing which regimen the next rows belong to
         row_center = 1 - ((i * 3 + 1.5) / (num_regimens * 3))
-        fig.text(0.02, row_center, regimen, ha="right", va="center", fontsize=13, fontweight="bold", rotation=90)
+        fig.text(0.01, row_center, regimen, ha="left", va="center", fontsize=16, fontweight="bold", rotation=90)
 
         states = states_dict[regimen]
         total_steps = len(states)
@@ -83,26 +83,26 @@ def plot_2d_slices(states_dict, time_steps, slice_idx=16, save_path="comparison_
             ax_t = axes[i * 3, j]
             ax_t.imshow(tumor_slice, cmap="Reds", vmin=0, vmax=1)
             if j == 0:
-                ax_t.set_ylabel("Tumor", fontsize=12)
+                ax_t.set_ylabel("Tumor", fontsize=16)
             if i == 0:
-                ax_t.set_title(f"Progress: {int(t_ratio*100)}%", fontsize=12)
+                ax_t.set_title(f"Progress: {int(t_ratio*100)}%", fontsize=16)
             ax_t.axis("off")
             
             # Plot Immune
             ax_i = axes[i * 3 + 1, j]
             ax_i.imshow(immune_slice, cmap="Blues", vmin=0, vmax=1)
             if j == 0:
-                ax_i.set_ylabel("Immune", fontsize=12)
+                ax_i.set_ylabel("Immune", fontsize=16)
             ax_i.axis("off")
             
             # Plot Drug
             ax_d = axes[i * 3 + 2, j]
             ax_d.imshow(drug_slice, cmap="Greens", vmin=0, vmax=1)
             if j == 0:
-                ax_d.set_ylabel("Drug", fontsize=12)
+                ax_d.set_ylabel("Drug", fontsize=16)
             ax_d.axis("off")
 
-    plt.tight_layout()
+    plt.tight_layout(pad=0.5, rect=[0.05, 0, 1, 1])
     plt.savefig(save_path, dpi=300)
     plt.close()
     print(f"Saved 2D slices to {save_path}")
@@ -124,13 +124,13 @@ def plot_3d_render(state, title, save_path, threshold=0.2):
     sc_tumor = ax_tumor.scatter(x_t, y_t, z_t, c=c_t, cmap='Reds', marker='o', alpha=0.6)
     fig.colorbar(sc_tumor, ax=ax_tumor, label='Tumor Density', shrink=0.5)
     
-    ax_tumor.set_title(f"{title} - Tumor", fontsize=12)
+    ax_tumor.set_title(f"{title} - Tumor", fontsize=16)
     ax_tumor.set_xlim(0, 31)
     ax_tumor.set_ylim(0, 31)
     ax_tumor.set_zlim(0, 31)
-    ax_tumor.set_xlabel('X')
-    ax_tumor.set_ylabel('Y')
-    ax_tumor.set_zlabel('Z')
+    ax_tumor.set_xlabel('X', fontsize=14)
+    ax_tumor.set_ylabel('Y', fontsize=14)
+    ax_tumor.set_zlabel('Z', fontsize=14)
     
     # Plot Drug
     ax_drug = fig.add_subplot(122, projection='3d')
@@ -140,13 +140,13 @@ def plot_3d_render(state, title, save_path, threshold=0.2):
     sc_drug = ax_drug.scatter(x_d, y_d, z_d, c=c_d, cmap='Greens', marker='o', alpha=0.6)
     fig.colorbar(sc_drug, ax=ax_drug, label='Drug Concentration', shrink=0.5)
     
-    ax_drug.set_title(f"{title} - Drug", fontsize=12)
+    ax_drug.set_title(f"{title} - Drug", fontsize=16)
     ax_drug.set_xlim(0, 31)
     ax_drug.set_ylim(0, 31)
     ax_drug.set_zlim(0, 31)
-    ax_drug.set_xlabel('X')
-    ax_drug.set_ylabel('Y')
-    ax_drug.set_zlabel('Z')
+    ax_drug.set_xlabel('X', fontsize=14)
+    ax_drug.set_ylabel('Y', fontsize=14)
+    ax_drug.set_zlabel('Z', fontsize=14)
     
     plt.tight_layout()
     plt.savefig(save_path, dpi=300)
